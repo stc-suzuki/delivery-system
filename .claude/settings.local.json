@@ -2,7 +2,11 @@
   "permissions": {
     "allow": [
       "Bash(git config *)",
-      "Bash(git commit *)"
+      "Bash(git commit *)",
+      "Bash(where psql *)",
+      "Bash(where pg_ctl)",
+      "Bash(docker --version)",
+      "Bash(mkdir -p \"src/app/api/auth/[...nextauth]\")"
     ]
   }
 }

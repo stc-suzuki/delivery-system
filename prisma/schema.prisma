@@ -1,0 +1,150 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id        String   @id @default(cuid())
+  email     String   @unique
+  password  String
+  name      String
+  role      UserRole @default(STAFF)
+  createdAt DateTime @default(now())
+}
+
+enum UserRole {
+  ADMIN
+  STAFF
+}
+
+model Truck {
+  id          String      @id @default(cuid())
+  plateNo     String      @unique
+  model       String
+  capacityKg  Int
+  status      TruckStatus @default(AVAILABLE)
+  createdAt   DateTime    @default(now())
+  routes      PlanRoute[]
+}
+
+enum TruckStatus {
+  AVAILABLE
+  IN_USE
+  MAINTENANCE
+}
+
+model Driver {
+  id         String     @id @default(cuid())
+  name       String
+  phone      String
+  type       DriverType
+  licenseNo  String     @unique
+  status     DriverStatus @default(ACTIVE)
+  createdAt  DateTime   @default(now())
+  routes     PlanRoute[]
+  spotDates  SpotAvailability[]
+}
+
+enum DriverType {
+  REGULAR
+  SPOT
+}
+
+enum DriverStatus {
+  ACTIVE
+  INACTIVE
+}
+
+model SpotAvailability {
+  id       String   @id @default(cuid())
+  driver   Driver   @relation(fields: [driverId], references: [id])
+  driverId String
+  date     DateTime @db.Date
+  @@unique([driverId, date])
+}
+
+model Location {
+  id               String         @id @default(cuid())
+  name             String
+  address          String
+  formattedAddress String?
+  phone            String?
+  lat              Float
+  lng              Float
+  city             String         @default("栃木県")
+  createdAt        DateTime       @default(now())
+  updatedAt        DateTime       @updatedAt
+  stops            DeliveryStop[]
+}
+
+model DeliveryPlan {
+  id        String       @id @default(cuid())
+  planDate  DateTime     @db.Date
+  status    PlanStatus   @default(DRAFT)
+  note      String?
+  createdBy String
+  createdAt DateTime     @default(now())
+  updatedAt DateTime     @updatedAt
+  routes    PlanRoute[]
+}
+
+enum PlanStatus {
+  DRAFT
+  CONFIRMED
+  IN_PROGRESS
+  COMPLETED
+}
+
+model PlanRoute {
+  id            String         @id @default(cuid())
+  plan          DeliveryPlan   @relation(fields: [planId], references: [id])
+  planId        String
+  truck         Truck          @relation(fields: [truckId], references: [id])
+  truckId       String
+  driver        Driver         @relation(fields: [driverId], references: [id])
+  driverId      String
+  sortOrder     Int
+  departureTime DateTime?
+  status        RouteStatus    @default(PENDING)
+  createdAt     DateTime       @default(now())
+  stops         DeliveryStop[]
+  trackingLogs  TrackingLog[]
+}
+
+enum RouteStatus {
+  PENDING
+  IN_PROGRESS
+  COMPLETED
+}
+
+model DeliveryStop {
+  id            String       @id @default(cuid())
+  route         PlanRoute    @relation(fields: [routeId], references: [id])
+  routeId       String
+  location      Location     @relation(fields: [locationId], references: [id])
+  locationId    String
+  stopOrder     Int
+  scheduledTime DateTime?
+  arrivedAt     DateTime?
+  status        StopStatus   @default(PENDING)
+  note          String?
+}
+
+enum StopStatus {
+  PENDING
+  COMPLETED
+  SKIPPED
+}
+
+model TrackingLog {
+  id        String    @id @default(cuid())
+  route     PlanRoute @relation(fields: [routeId], references: [id])
+  routeId   String
+  lat       Float
+  lng       Float
+  timestamp DateTime  @default(now())
+}
