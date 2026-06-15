@@ -468,6 +468,7 @@ export default function PlanDetailPage() {
                   <th className="px-4 py-2 text-left font-medium text-gray-500">トラック</th>
                   <th className="px-4 py-2 text-left font-medium text-gray-500">ドライバー</th>
                   <th className="px-4 py-2 text-left font-medium text-gray-500">停車件数</th>
+                  <th className="px-4 py-2 text-left font-medium text-gray-500">ドライバー用URL</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100">
@@ -476,6 +477,18 @@ export default function PlanDetailPage() {
                     <td className="px-4 py-2">{r.truckPlateNo}</td>
                     <td className="px-4 py-2">{r.driverName}</td>
                     <td className="px-4 py-2">{r.stops.length}</td>
+                    <td className="px-4 py-2">
+                      <button
+                        onClick={() => {
+                          const url = `${window.location.origin}/driver/${r.id}`;
+                          navigator.clipboard.writeText(url);
+                          alert(`コピーしました:\n${url}`);
+                        }}
+                        className="text-blue-600 hover:underline"
+                      >
+                        URLをコピー
+                      </button>
+                    </td>
                   </tr>
                 ))}
               </tbody>
