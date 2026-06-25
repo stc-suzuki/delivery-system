@@ -1,11 +1,17 @@
 'use client';
 
 import { useEffect, useRef } from 'react';
-import mapboxgl from 'mapbox-gl';
-import 'mapbox-gl/dist/mapbox-gl.css';
+import L from 'leaflet';
+import 'leaflet/dist/leaflet.css';
 import { TOCHIGI_DEPOT } from '@/lib/routeOptimizer';
 
-mapboxgl.accessToken = process.env.NEXT_PUBLIC_MAPBOX_TOKEN ?? '';
+// Leaflet のデフォルトアイコン画像パス修正
+delete (L.Icon.Default.prototype as any)._getIconUrl;
+L.Icon.Default.mergeOptions({
+  iconRetinaUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon-2x.png',
+  iconUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon.png',
+  shadowUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png',
+});
 
 export type RouteForMap = {
   id: string;
@@ -20,26 +26,30 @@ type Props = {
 
 export default function DeliveryMap({ routes, onLocationClick }: Props) {
   const containerRef = useRef<HTMLDivElement>(null);
-  const mapRef = useRef<mapboxgl.Map | null>(null);
-  const markersRef = useRef<mapboxgl.Marker[]>([]);
+  const mapRef = useRef<L.Map | null>(null);
+  const layersRef = useRef<L.Layer[]>([]);
 
   useEffect(() => {
     if (!containerRef.current || mapRef.current) return;
-    mapRef.current = new mapboxgl.Map({
-      container: containerRef.current,
-      style: 'mapbox://styles/mapbox/streets-v12',
-      center: [TOCHIGI_DEPOT.lng, TOCHIGI_DEPOT.lat],
-      zoom: 9,
-    });
+
+    const map = L.map(containerRef.current).setView(
+      [TOCHIGI_DEPOT.lat, TOCHIGI_DEPOT.lng],
+      10
+    );
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      attribution: '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
+    }).addTo(map);
 
     if (onLocationClick) {
-      mapRef.current.on('click', e => {
-        onLocationClick({ lat: e.lngLat.lat, lng: e.lngLat.lng });
+      map.on('click', (e: L.LeafletMouseEvent) => {
+        onLocationClick({ lat: e.latlng.lat, lng: e.latlng.lng });
       });
     }
 
+    mapRef.current = map;
+
     return () => {
-      mapRef.current?.remove();
+      map.remove();
       mapRef.current = null;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -49,69 +59,47 @@ export default function DeliveryMap({ routes, onLocationClick }: Props) {
     const map = mapRef.current;
     if (!map) return;
 
-    const draw = () => {
-      // 既存マーカー・レイヤーをクリア
-      markersRef.current.forEach(m => m.remove());
-      markersRef.current = [];
-      routes.forEach(route => {
-        const layerId = `route-${route.id}`;
-        const sourceId = `route-source-${route.id}`;
-        if (map.getLayer(layerId)) map.removeLayer(layerId);
-        if (map.getSource(sourceId)) map.removeSource(sourceId);
+    // 既存レイヤーを削除
+    layersRef.current.forEach(l => map.removeLayer(l));
+    layersRef.current = [];
+
+    routes.forEach(route => {
+      if (route.stops.length === 0) return;
+      const sorted = [...route.stops].sort((a, b) => a.order - b.order);
+      const latlngs = sorted.map(s => [s.lat, s.lng] as L.LatLngTuple);
+
+      // ルート線
+      const line = L.polyline(latlngs, { color: route.color, weight: 3 }).addTo(map);
+      layersRef.current.push(line);
+
+      // 停車地マーカー
+      sorted.forEach(stop => {
+        const icon = L.divIcon({
+          className: '',
+          html: `<div style="
+            background:${route.color};
+            color:#fff;
+            border-radius:50%;
+            width:24px;height:24px;
+            display:flex;align-items:center;justify-content:center;
+            font-size:12px;font-weight:bold;
+            border:2px solid white;
+            box-shadow:0 1px 3px rgba(0,0,0,.4);
+          ">${stop.order + 1}</div>`,
+          iconSize: [24, 24],
+          iconAnchor: [12, 12],
+        });
+        const marker = L.marker([stop.lat, stop.lng], { icon })
+          .bindPopup(stop.name ?? `停車地 ${stop.order + 1}`)
+          .addTo(map);
+        layersRef.current.push(marker);
       });
+    });
 
-      routes.forEach(route => {
-        if (route.stops.length === 0) return;
-        const sorted = [...route.stops].sort((a, b) => a.order - b.order);
-        const coordinates = sorted.map(s => [s.lng, s.lat]);
-
-        const sourceId = `route-source-${route.id}`;
-        const layerId = `route-${route.id}`;
-
-        map.addSource(sourceId, {
-          type: 'geojson',
-          data: {
-            type: 'Feature',
-            properties: {},
-            geometry: { type: 'LineString', coordinates },
-          },
-        });
-        map.addLayer({
-          id: layerId,
-          type: 'line',
-          source: sourceId,
-          layout: { 'line-join': 'round', 'line-cap': 'round' },
-          paint: { 'line-color': route.color, 'line-width': 3 },
-        });
-
-        sorted.forEach(stop => {
-          const el = document.createElement('div');
-          el.style.background = route.color;
-          el.style.color = '#fff';
-          el.style.borderRadius = '50%';
-          el.style.width = '24px';
-          el.style.height = '24px';
-          el.style.display = 'flex';
-          el.style.alignItems = 'center';
-          el.style.justifyContent = 'center';
-          el.style.fontSize = '12px';
-          el.style.fontWeight = 'bold';
-          el.style.border = '2px solid white';
-          el.textContent = String(stop.order + 1);
-
-          const marker = new mapboxgl.Marker({ element: el })
-            .setLngLat([stop.lng, stop.lat])
-            .setPopup(new mapboxgl.Popup({ offset: 12 }).setText(stop.name ?? `停車地 ${stop.order + 1}`))
-            .addTo(map);
-          markersRef.current.push(marker);
-        });
-      });
-    };
-
-    if (map.isStyleLoaded()) {
-      draw();
-    } else {
-      map.once('load', draw);
+    // 全停車地が見えるようにズーム調整
+    const allPoints = routes.flatMap(r => r.stops.map(s => [s.lat, s.lng] as L.LatLngTuple));
+    if (allPoints.length > 0) {
+      map.fitBounds(L.latLngBounds(allPoints), { padding: [40, 40], maxZoom: 13 });
     }
   }, [routes]);
 

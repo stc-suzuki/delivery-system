@@ -6,7 +6,21 @@
       "Bash(where psql *)",
       "Bash(where pg_ctl)",
       "Bash(docker --version)",
-      "Bash(mkdir -p \"src/app/api/auth/[...nextauth]\")"
+      "Bash(mkdir -p \"src/app/api/auth/[...nextauth]\")",
+      "Bash(sleep 8 && cat \"/c/Users/Nsuzu/AppData/Local/Temp/claude/C--Users-Nsuzu-Documents--Claude-Code----------/2f65de38-e4dc-4fce-8b6b-4f5065889228/tasks/b0qfomojm.output\")",
+      "Bash(git diff *)",
+      "Bash(npm run *)",
+      "Bash(git add *)",
+      "Bash(powershell -Command \"Get-Process node -ErrorAction SilentlyContinue | Stop-Process -Force\")",
+      "Bash(npm install *)",
+      "Bash(npm uninstall *)",
+      "Bash(npx tsc *)",
+      "Skill(run)",
+      "Skill(run:*)",
+      "Bash(curl -s -o /dev/null -w \"%{http_code}\" http://localhost:3000/)",
+      "mcp__Claude_in_Chrome__navigate",
+      "mcp__Claude_in_Chrome__tabs_context_mcp",
+      "Bash(git rm *)"
     ]
   }
 }

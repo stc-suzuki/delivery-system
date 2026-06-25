@@ -5,7 +5,7 @@ import { Server } from 'socket.io';
 import { setIO } from './src/lib/socket';
 
 const dev = process.env.NODE_ENV !== 'production';
-const hostname = 'localhost';
+const hostname = process.env.HOSTNAME || '0.0.0.0';
 const port = Number(process.env.PORT) || 3000;
 
 const app = next({ dev, hostname, port });
@@ -19,6 +19,10 @@ app.prepare().then(() => {
 
   const io = new Server(httpServer, {
     path: '/api/socket',
+    cors: {
+      origin: '*',
+      methods: ['GET', 'POST'],
+    },
   });
 
   io.on('connection', socket => {
@@ -30,7 +34,7 @@ app.prepare().then(() => {
 
   setIO(io);
 
-  httpServer.listen(port, () => {
+  httpServer.listen(port, hostname, () => {
     console.log(`> Ready on http://${hostname}:${port}`);
   });
 });

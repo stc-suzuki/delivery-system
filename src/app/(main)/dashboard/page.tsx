@@ -3,16 +3,46 @@
 import { useEffect, useState } from 'react';
 import KpiCards from '@/components/dashboard/KpiCards';
 import WeeklyChart from '@/components/dashboard/WeeklyChart';
-import DriverPieChart from '@/components/dashboard/DriverPieChart';
+import DriverStatusTable from '@/components/dashboard/DriverStatusTable';
+import PlanSummaryList from '@/components/dashboard/PlanSummaryList';
+import { PlanStatus } from '@prisma/client';
+
+type Destination = {
+  id: string;
+  name: string;
+  status: 'PENDING' | 'COMPLETED' | 'SKIPPED';
+};
+
+type PlanSummary = {
+  id: string;
+  planDate: string;
+  status: PlanStatus;
+  note: string | null;
+  routeCount: number;
+  stopCount: number;
+  completedStopCount: number;
+  drivers: string[];
+  trucks: string[];
+  destinations: Destination[];
+};
+
+type DriverRow = {
+  id: string;
+  name: string;
+  type: 'REGULAR' | 'SPOT';
+  status: 'IN_PROGRESS' | 'IDLE' | 'COMPLETED';
+  truck: string | null;
+};
 
 type DashboardData = {
   planCount: number;
   completedCount: number;
   inProgressCount: number;
   last7days: { date: string; count: number }[];
-  driverStatus: { regular: number; spot: number };
+  drivers: DriverRow[];
   unassignedTrucks: number;
   totalTrucks: number;
+  plans: PlanSummary[];
 };
 
 export default function DashboardPage() {
@@ -41,8 +71,9 @@ export default function DashboardPage() {
       />
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
         <WeeklyChart data={data.last7days} />
-        <DriverPieChart regular={data.driverStatus.regular} spot={data.driverStatus.spot} />
+        <DriverStatusTable drivers={data.drivers} />
       </div>
+      <PlanSummaryList plans={data.plans} />
     </div>
   );
 }

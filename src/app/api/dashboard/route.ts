@@ -10,12 +10,41 @@ export async function GET() {
 
     const todayPlans = await prisma.deliveryPlan.findMany({
       where: { planDate: { gte: today, lte: endOfDay(today) } },
-      include: { routes: true },
+      include: {
+        routes: {
+          include: {
+            truck: true,
+            driver: true,
+            stops: { include: { location: true }, orderBy: { stopOrder: 'asc' } },
+          },
+        },
+      },
     });
 
     const planCount = todayPlans.length;
     const completedCount = todayPlans.filter(p => p.status === 'COMPLETED').length;
     const inProgressCount = todayPlans.filter(p => p.status === 'IN_PROGRESS').length;
+
+    const planSummaries = todayPlans.map(p => {
+      const stops = p.routes.flatMap(r => r.stops);
+      const completedStops = stops.filter(s => s.status === 'COMPLETED').length;
+      return {
+        id: p.id,
+        planDate: p.planDate,
+        status: p.status,
+        note: p.note,
+        routeCount: p.routes.length,
+        stopCount: stops.length,
+        completedStopCount: completedStops,
+        drivers: p.routes.map(r => r.driver.name),
+        trucks: p.routes.map(r => r.truck.plateNo),
+        destinations: stops.map(s => ({
+          id: s.id,
+          name: s.location.name,
+          status: s.status,
+        })),
+      };
+    });
 
     // 過去7日の完了件数
     const last7days = [];
@@ -32,8 +61,25 @@ export async function GET() {
 
     // ドライバー稼働状況
     const allDrivers = await prisma.driver.findMany();
-    const regularCount = allDrivers.filter(d => d.type === 'REGULAR').length;
-    const spotCount = allDrivers.filter(d => d.type === 'SPOT').length;
+    const todayRoutes = todayPlans.flatMap(p => p.routes);
+    const routeByDriverId = new Map(todayRoutes.map(r => [r.driverId, r]));
+
+    const driverStatusLabel = (routeStatus: string | undefined): 'IN_PROGRESS' | 'IDLE' | 'COMPLETED' => {
+      if (routeStatus === 'IN_PROGRESS') return 'IN_PROGRESS';
+      if (routeStatus === 'COMPLETED') return 'COMPLETED';
+      return 'IDLE';
+    };
+
+    const driverList = allDrivers.map(d => {
+      const route = routeByDriverId.get(d.id);
+      return {
+        id: d.id,
+        name: d.name,
+        type: d.type,
+        status: driverStatusLabel(route?.status),
+        truck: route?.truck.plateNo ?? null,
+      };
+    });
 
     const assignedTruckIds = new Set(
       todayPlans.flatMap(p => p.routes.map(r => r.truckId))
@@ -46,9 +92,10 @@ export async function GET() {
       completedCount,
       inProgressCount,
       last7days,
-      driverStatus: { regular: regularCount, spot: spotCount },
+      drivers: driverList,
       unassignedTrucks,
       totalTrucks: allTrucks.length,
+      plans: planSummaries,
     });
   } catch (error) {
     console.error(error);
