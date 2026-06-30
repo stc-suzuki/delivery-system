@@ -6,14 +6,14 @@ export async function GET(
   { params }: { params: { id: string } }
 ) {
   try {
-    const dates = await prisma.spotAvailability.findMany({
+    const dates = await prisma.driverDayOff.findMany({
       where: { driverId: params.id },
       orderBy: { date: 'asc' },
     });
     return NextResponse.json(dates);
   } catch (error) {
     console.error(error);
-    return NextResponse.json({ error: '稼働日の取得に失敗しました' }, { status: 500 });
+    return NextResponse.json({ error: '休日設定の取得に失敗しました' }, { status: 500 });
   }
 }
 
@@ -34,19 +34,19 @@ export async function POST(
     }
 
     await prisma.$transaction([
-      prisma.spotAvailability.deleteMany({ where: { driverId: params.id } }),
-      prisma.spotAvailability.createMany({
+      prisma.driverDayOff.deleteMany({ where: { driverId: params.id } }),
+      prisma.driverDayOff.createMany({
         data: dates.map(d => ({ driverId: params.id, date: new Date(d) })),
       }),
     ]);
 
-    const result = await prisma.spotAvailability.findMany({
+    const result = await prisma.driverDayOff.findMany({
       where: { driverId: params.id },
       orderBy: { date: 'asc' },
     });
     return NextResponse.json(result);
   } catch (error) {
     console.error(error);
-    return NextResponse.json({ error: '稼働日の登録に失敗しました' }, { status: 500 });
+    return NextResponse.json({ error: '休日設定の保存に失敗しました' }, { status: 500 });
   }
 }

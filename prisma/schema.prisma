@@ -46,12 +46,13 @@ model Driver {
   status     DriverStatus @default(ACTIVE)
   createdAt  DateTime   @default(now())
   routes     PlanRoute[]
-  spotDates  SpotAvailability[]
+  dayOffs    DriverDayOff[]
 }
 
 enum DriverType {
+  FIXED_ROUTE
   REGULAR
-  SPOT
+  SALES
 }
 
 enum DriverStatus {
@@ -59,7 +60,8 @@ enum DriverStatus {
   INACTIVE
 }
 
-model SpotAvailability {
+// 土日・祝日に加えて、平日に手動で設定する休日
+model DriverDayOff {
   id       String   @id @default(cuid())
   driver   Driver   @relation(fields: [driverId], references: [id])
   driverId String
@@ -129,6 +131,7 @@ model DeliveryStop {
   locationId    String
   stopOrder     Int
   scheduledTime DateTime?
+  isTimeFixed   Boolean      @default(false)
   arrivedAt     DateTime?
   status        StopStatus   @default(PENDING)
   note          String?
@@ -138,6 +141,17 @@ enum StopStatus {
   PENDING
   COMPLETED
   SKIPPED
+}
+
+// システム全体の基本設定（単一行のみ保持するシングルトン）
+model SystemSetting {
+  id                         String   @id @default("default")
+  defaultDepartureTime       String   @default("08:00") // HH:mm
+  lunchBreakStart            String   @default("12:00") // HH:mm
+  lunchBreakEnd              String   @default("13:00") // HH:mm
+  defaultStopDurationMinutes Int      @default(10)
+  defaultCargoRatio          Int      @default(100) // %
+  updatedAt                  DateTime @updatedAt
 }
 
 model TrackingLog {

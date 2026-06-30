@@ -19,7 +19,13 @@ export async function PATCH(
     }
 
     const body = await req.json();
-    const { routes } = body as { routes: { id: string; stops: { id: string; locationId?: string; stopOrder: number }[] }[] };
+    const { routes } = body as {
+      routes: {
+        id: string;
+        departureTime?: string | null;
+        stops: { id: string; locationId?: string; stopOrder: number; scheduledTime?: string | null }[];
+      }[];
+    };
 
     if (!Array.isArray(routes)) {
       return NextResponse.json({ error: 'routes は配列で指定してください' }, { status: 400 });
@@ -40,12 +46,24 @@ export async function PATCH(
         if (!existing || existing.planId !== params.id) {
           throw new Error(`ルート ${route.id} はこの計画に属していません`);
         }
+        if (route.departureTime !== undefined) {
+          await tx.planRoute.update({
+            where: { id: route.id },
+            data: { departureTime: route.departureTime ? new Date(route.departureTime) : null },
+          });
+        }
         for (const stop of route.stops) {
           await tx.deliveryStop.update({
             where: { id: stop.id },
             data: {
               routeId: route.id,
               stopOrder: stop.stopOrder,
+              ...(stop.scheduledTime !== undefined
+                ? {
+                    scheduledTime: stop.scheduledTime ? new Date(stop.scheduledTime) : null,
+                    isTimeFixed: !!stop.scheduledTime,
+                  }
+                : {}),
             },
           });
         }

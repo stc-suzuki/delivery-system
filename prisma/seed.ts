@@ -50,6 +50,23 @@ async function main() {
   }
   console.log('トラック15台作成完了');
 
+  // 固定ルートドライバー10名
+  for (let i = 1; i <= 10; i++) {
+    const licenseNo = `FIX-${String(i).padStart(4, '0')}`;
+    await prisma.driver.upsert({
+      where: { licenseNo },
+      update: {},
+      create: {
+        name: `${SURNAMES[i % SURNAMES.length]} 太郎${i}`,
+        phone: `090-0000-${String(1000 + i)}`,
+        type: DriverType.FIXED_ROUTE,
+        licenseNo,
+        status: 'ACTIVE',
+      },
+    });
+  }
+  console.log('固定ルートドライバー10名作成完了');
+
   // 専任ドライバー10名
   for (let i = 1; i <= 10; i++) {
     const licenseNo = `REG-${String(i).padStart(4, '0')}`;
@@ -57,8 +74,8 @@ async function main() {
       where: { licenseNo },
       update: {},
       create: {
-        name: `${SURNAMES[i % SURNAMES.length]} 太郎${i}`,
-        phone: `090-0000-${String(1000 + i)}`,
+        name: `${SURNAMES[(i + 10) % SURNAMES.length]} 次郎${i}`,
+        phone: `080-0000-${String(2000 + i)}`,
         type: DriverType.REGULAR,
         licenseNo,
         status: 'ACTIVE',
@@ -67,40 +84,22 @@ async function main() {
   }
   console.log('専任ドライバー10名作成完了');
 
-  // スポットドライバー10名
+  // 営業ドライバー10名
   for (let i = 1; i <= 10; i++) {
-    const licenseNo = `SPOT-${String(i).padStart(4, '0')}`;
-    const driver = await prisma.driver.upsert({
+    const licenseNo = `SALES-${String(i).padStart(4, '0')}`;
+    await prisma.driver.upsert({
       where: { licenseNo },
       update: {},
       create: {
-        name: `${SURNAMES[(i + 10) % SURNAMES.length]} 次郎${i}`,
-        phone: `080-0000-${String(2000 + i)}`,
-        type: DriverType.SPOT,
+        name: `${SURNAMES[(i + 5) % SURNAMES.length]} 三郎${i}`,
+        phone: `070-0000-${String(3000 + i)}`,
+        type: DriverType.SALES,
         licenseNo,
         status: 'ACTIVE',
       },
     });
-
-    // 今後30日のうちランダムに稼働日を登録
-    const dates: Date[] = [];
-    for (let d = 0; d < 30; d++) {
-      if (Math.random() < 0.4) {
-        const date = new Date();
-        date.setHours(0, 0, 0, 0);
-        date.setDate(date.getDate() + d);
-        dates.push(date);
-      }
-    }
-    for (const date of dates) {
-      await prisma.spotAvailability.upsert({
-        where: { driverId_date: { driverId: driver.id, date } },
-        update: {},
-        create: { driverId: driver.id, date },
-      });
-    }
   }
-  console.log('スポットドライバー10名作成完了');
+  console.log('営業ドライバー10名作成完了');
 
   // 配送先500件
   const existingCount = await prisma.location.count();

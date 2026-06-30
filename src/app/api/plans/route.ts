@@ -10,7 +10,7 @@ export async function GET(req: NextRequest) {
       where: date ? { planDate: new Date(date) } : undefined,
       include: {
         routes: {
-          include: { truck: true, driver: true, stops: true },
+          include: { truck: true, driver: true, stops: { include: { location: true }, orderBy: { stopOrder: 'asc' } } },
         },
       },
       orderBy: { planDate: 'desc' },

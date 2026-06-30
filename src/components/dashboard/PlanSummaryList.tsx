@@ -3,6 +3,7 @@
 import { useRouter } from 'next/navigation';
 import { format } from 'date-fns';
 import PlanStatusBadge from '@/components/plans/PlanStatusBadge';
+import { splitPlateNo } from '@/components/plans/DispatchGanttChart';
 import { PlanStatus } from '@prisma/client';
 
 type Destination = {
@@ -21,8 +22,11 @@ type PlanSummary = {
   completedStopCount: number;
   drivers: string[];
   trucks: string[];
+  routeStatuses: RouteOperationStatus[];
   destinations: Destination[];
 };
+
+type RouteOperationStatus = 'BEFORE_START' | 'STARTED' | 'IN_OPERATION' | 'COMPLETED';
 
 const DESTINATION_STYLES: Record<Destination['status'], string> = {
   PENDING: 'bg-gray-100 text-gray-600',
@@ -34,6 +38,20 @@ const DESTINATION_LABELS: Record<Destination['status'], string> = {
   PENDING: '未完了',
   COMPLETED: '完了',
   SKIPPED: 'スキップ',
+};
+
+const ROUTE_STATUS_STYLES: Record<RouteOperationStatus, string> = {
+  BEFORE_START: 'bg-gray-100 text-gray-600',
+  STARTED: 'bg-orange-100 text-orange-700',
+  IN_OPERATION: 'bg-yellow-100 text-yellow-800',
+  COMPLETED: 'bg-green-100 text-green-700',
+};
+
+const ROUTE_STATUS_LABELS: Record<RouteOperationStatus, string> = {
+  BEFORE_START: '稼働前',
+  STARTED: '運送開始',
+  IN_OPERATION: '稼働中',
+  COMPLETED: '運送完了',
 };
 
 export default function PlanSummaryList({ plans }: { plans: PlanSummary[] }) {
@@ -48,10 +66,15 @@ export default function PlanSummaryList({ plans }: { plans: PlanSummary[] }) {
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
         {plans.map(plan => {
           const progress = plan.stopCount === 0 ? 0 : Math.round((plan.completedStopCount / plan.stopCount) * 100);
+          const isCompleted = plan.status === 'COMPLETED';
           return (
             <div
               key={plan.id}
-              className="rounded-lg border border-gray-200 bg-white p-4 shadow-sm hover:shadow"
+              className={
+                isCompleted
+                  ? 'rounded-lg border border-green-200 border-l-4 border-l-green-500 bg-green-50 p-4 shadow-sm hover:shadow'
+                  : 'rounded-lg border border-gray-200 bg-white p-4 shadow-sm hover:shadow'
+              }
             >
               <button
                 onClick={() => router.push(`/plans/${plan.id}`)}
@@ -61,7 +84,6 @@ export default function PlanSummaryList({ plans }: { plans: PlanSummary[] }) {
                   <span className="text-sm font-semibold">{format(new Date(plan.planDate), 'yyyy/MM/dd')}</span>
                   <PlanStatusBadge status={plan.status} />
                 </div>
-                <p className="text-sm text-gray-600">ルート数: {plan.routeCount}</p>
                 <p className="text-sm text-gray-600">
                   停車地: {plan.completedStopCount} / {plan.stopCount} 完了
                 </p>
@@ -72,9 +94,31 @@ export default function PlanSummaryList({ plans }: { plans: PlanSummary[] }) {
                   />
                 </div>
                 {plan.drivers.length > 0 && (
-                  <p className="mt-2 truncate text-xs text-gray-500">
-                    ドライバー: {plan.drivers.join(', ')}
-                  </p>
+                  <div className="mt-2 space-y-1">
+                    {plan.drivers.map((driver, i) => {
+                      const truck = plan.trucks[i];
+                      const routeStatus = plan.routeStatuses[i];
+                      const { prefix, lastFour } = truck ? splitPlateNo(truck) : { prefix: '', lastFour: '' };
+                      return (
+                        <div key={i} className="flex items-center gap-2">
+                          <span className="text-base font-bold text-gray-800">
+                            {driver}
+                            {lastFour && (
+                              <span className="ml-1 text-base font-bold text-gray-800">
+                                {prefix && <span className="text-xs font-normal text-gray-500">{prefix}</span>}
+                                {lastFour}
+                              </span>
+                            )}
+                          </span>
+                          {routeStatus && (
+                            <span className={`shrink-0 rounded-full px-2 py-0.5 text-xs font-medium ${ROUTE_STATUS_STYLES[routeStatus]}`}>
+                              {ROUTE_STATUS_LABELS[routeStatus]}
+                            </span>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
                 )}
                 {plan.note && <p className="mt-1 truncate text-xs text-gray-400">{plan.note}</p>}
               </button>

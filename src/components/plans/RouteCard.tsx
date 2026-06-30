@@ -12,6 +12,8 @@ export type RouteStop = {
   lat: number;
   lng: number;
   stopOrder: number;
+  scheduledTime: string | null;
+  isTimeFixed: boolean;
 };
 
 export type RouteData = {
@@ -19,6 +21,7 @@ export type RouteData = {
   truckPlateNo: string;
   driverName: string;
   color: string;
+  departureTime: string | null;
   stops: RouteStop[];
 };
 

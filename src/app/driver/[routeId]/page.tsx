@@ -11,6 +11,7 @@ type Stop = {
   stopOrder: number;
   status: StopStatus;
   scheduledTime: string | null;
+  isTimeFixed: boolean;
   note: string | null;
   location: { id: string; name: string; address: string; phone: string | null; lat: number; lng: number };
 };
@@ -38,6 +39,7 @@ export default function DriverRoutePage() {
   const [error, setError] = useState('');
   const [tracking, setTracking] = useState(false);
   const [updatingStopId, setUpdatingStopId] = useState<string | null>(null);
+  const [startingRoute, setStartingRoute] = useState(false);
   const watchIdRef = useRef<number | null>(null);
 
   async function fetchRoute() {
@@ -94,6 +96,23 @@ export default function DriverRoutePage() {
       if (watchIdRef.current !== null) navigator.geolocation.clearWatch(watchIdRef.current);
     };
   }, []);
+
+  async function startRoute() {
+    setStartingRoute(true);
+    try {
+      const res = await fetch(`/api/driver/${routeId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status: 'IN_PROGRESS' }),
+      });
+      if (!res.ok) throw new Error((await res.json()).error);
+      await fetchRoute();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : '更新に失敗しました');
+    } finally {
+      setStartingRoute(false);
+    }
+  }
 
   async function updateStopStatus(stopId: string, status: StopStatus) {
     setUpdatingStopId(stopId);
@@ -162,6 +181,19 @@ export default function DriverRoutePage() {
                 </span>
                 <div>
                   <p className="font-medium text-gray-800">{stop.location.name}</p>
+                  {stop.scheduledTime && (
+                    <p className="mt-0.5">
+                      {stop.isTimeFixed ? (
+                        <span className="inline-flex items-center gap-1 rounded bg-red-50 px-1.5 py-0.5 text-xs font-semibold text-red-600">
+                          {format(new Date(stop.scheduledTime), 'HH:mm')} 指定時刻
+                        </span>
+                      ) : (
+                        <span className="inline-flex items-center gap-1 rounded bg-gray-100 px-1.5 py-0.5 text-xs text-gray-500">
+                          {format(new Date(stop.scheduledTime), 'HH:mm')} 頃（目安）
+                        </span>
+                      )}
+                    </p>
+                  )}
                   <p className="text-xs text-gray-500">{stop.location.address}</p>
                   {stop.location.phone && (
                     <a href={`tel:${stop.location.phone}`} className="text-xs text-blue-600">
@@ -219,7 +251,16 @@ export default function DriverRoutePage() {
         ))}
       </main>
 
-      <footer className="fixed bottom-0 left-0 right-0 border-t border-gray-200 bg-white p-3">
+      <footer className="fixed bottom-0 left-0 right-0 border-t border-gray-200 bg-white p-3 space-y-2">
+        {route.status === 'PENDING' && (
+          <button
+            onClick={startRoute}
+            disabled={startingRoute}
+            className="w-full rounded bg-orange-500 py-3 text-sm font-bold text-white disabled:opacity-50"
+          >
+            {startingRoute ? '更新中...' : '運送開始'}
+          </button>
+        )}
         {!tracking ? (
           <button onClick={startTracking} className="w-full rounded bg-blue-600 py-3 text-sm font-bold text-white">
             位置情報の共有を開始

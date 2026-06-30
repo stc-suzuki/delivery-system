@@ -1,4 +1,5 @@
 import { prisma } from '@/lib/prisma';
+import { isDefaultDayOff } from '@/lib/driverSchedule';
 
 export const MAX_STOPS_PER_ROUTE = 40;
 
@@ -36,15 +37,13 @@ export async function checkDriverAvailable(
   return !existing;
 }
 
-export async function checkSpotDriverAvailability(
+export async function checkDriverNotOnDayOff(
   planDate: Date,
   driverId: string
 ): Promise<boolean> {
-  const driver = await prisma.driver.findUnique({ where: { id: driverId } });
-  if (!driver) return false;
-  if (driver.type !== 'SPOT') return true;
-  const availability = await prisma.spotAvailability.findUnique({
+  if (isDefaultDayOff(planDate)) return false;
+  const dayOff = await prisma.driverDayOff.findUnique({
     where: { driverId_date: { driverId, date: planDate } },
   });
-  return !!availability;
+  return !dayOff;
 }

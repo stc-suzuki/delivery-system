@@ -1,12 +1,13 @@
-import { NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { startOfDay, endOfDay, subDays, startOfDay as sod } from 'date-fns';
 
 export const dynamic = 'force-dynamic';
 
-export async function GET() {
+export async function GET(request: NextRequest) {
   try {
-    const today = startOfDay(new Date());
+    const dateParam = request.nextUrl.searchParams.get('date');
+    const today = dateParam ? startOfDay(new Date(dateParam)) : startOfDay(new Date());
 
     const todayPlans = await prisma.deliveryPlan.findMany({
       where: { planDate: { gte: today, lte: endOfDay(today) } },
@@ -23,7 +24,18 @@ export async function GET() {
 
     const planCount = todayPlans.length;
     const completedCount = todayPlans.filter(p => p.status === 'COMPLETED').length;
-    const inProgressCount = todayPlans.filter(p => p.status === 'IN_PROGRESS').length;
+    const inProgressCount = todayPlans.filter(
+      p =>
+        p.status !== 'COMPLETED' &&
+        p.routes.flatMap(r => r.stops).some(s => s.status === 'COMPLETED')
+    ).length;
+
+    const routeOperationStatus = (route: (typeof todayPlans)[number]['routes'][number]): 'BEFORE_START' | 'STARTED' | 'IN_OPERATION' | 'COMPLETED' => {
+      if (route.status === 'COMPLETED') return 'COMPLETED';
+      const hasCompletedStop = route.stops.some(s => s.status === 'COMPLETED');
+      if (route.status === 'IN_PROGRESS') return hasCompletedStop ? 'IN_OPERATION' : 'STARTED';
+      return 'BEFORE_START';
+    };
 
     const planSummaries = todayPlans.map(p => {
       const stops = p.routes.flatMap(r => r.stops);
@@ -38,6 +50,7 @@ export async function GET() {
         completedStopCount: completedStops,
         drivers: p.routes.map(r => r.driver.name),
         trucks: p.routes.map(r => r.truck.plateNo),
+        routeStatuses: p.routes.map(routeOperationStatus),
         destinations: stops.map(s => ({
           id: s.id,
           name: s.location.name,
@@ -64,9 +77,11 @@ export async function GET() {
     const todayRoutes = todayPlans.flatMap(p => p.routes);
     const routeByDriverId = new Map(todayRoutes.map(r => [r.driverId, r]));
 
-    const driverStatusLabel = (routeStatus: string | undefined): 'IN_PROGRESS' | 'IDLE' | 'COMPLETED' => {
-      if (routeStatus === 'IN_PROGRESS') return 'IN_PROGRESS';
-      if (routeStatus === 'COMPLETED') return 'COMPLETED';
+    const driverStatusLabel = (route: (typeof todayRoutes)[number] | undefined): 'IN_PROGRESS' | 'IDLE' | 'COMPLETED' => {
+      if (!route) return 'IDLE';
+      if (route.status === 'COMPLETED') return 'COMPLETED';
+      const hasCompletedStop = route.stops.some(s => s.status === 'COMPLETED');
+      if (route.status === 'IN_PROGRESS' || hasCompletedStop) return 'IN_PROGRESS';
       return 'IDLE';
     };
 
@@ -76,7 +91,7 @@ export async function GET() {
         id: d.id,
         name: d.name,
         type: d.type,
-        status: driverStatusLabel(route?.status),
+        status: driverStatusLabel(route),
         truck: route?.truck.plateNo ?? null,
       };
     });

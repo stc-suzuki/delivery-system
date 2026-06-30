@@ -2,23 +2,27 @@
 
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
+import { DriverType } from '@prisma/client';
+import { DRIVER_TYPE_LABELS } from '@/lib/driverSchedule';
 
 type Driver = {
   id: string;
   name: string;
   phone: string;
-  type: 'REGULAR' | 'SPOT';
+  type: DriverType;
   licenseNo: string;
   status: string;
 };
 
+const TYPE_TABS: DriverType[] = ['FIXED_ROUTE', 'REGULAR', 'SALES'];
+
 export default function DriversPage() {
   const [drivers, setDrivers] = useState<Driver[]>([]);
-  const [tab, setTab] = useState<'REGULAR' | 'SPOT'>('REGULAR');
+  const [tab, setTab] = useState<DriverType>('FIXED_ROUTE');
   const [name, setName] = useState('');
   const [phone, setPhone] = useState('');
   const [licenseNo, setLicenseNo] = useState('');
-  const [type, setType] = useState<'REGULAR' | 'SPOT'>('REGULAR');
+  const [type, setType] = useState<DriverType>('FIXED_ROUTE');
   const [error, setError] = useState('');
   const [saving, setSaving] = useState(false);
 
@@ -87,11 +91,12 @@ export default function DriversPage() {
           />
           <select
             value={type}
-            onChange={e => setType(e.target.value as 'REGULAR' | 'SPOT')}
+            onChange={e => setType(e.target.value as DriverType)}
             className="rounded border border-gray-300 px-3 py-2 text-sm sm:col-span-1"
           >
-            <option value="REGULAR">専任</option>
-            <option value="SPOT">スポット</option>
+            {TYPE_TABS.map(t => (
+              <option key={t} value={t}>{DRIVER_TYPE_LABELS[t]}</option>
+            ))}
           </select>
           <button
             type="submit"
@@ -104,18 +109,15 @@ export default function DriversPage() {
       </div>
 
       <div className="flex gap-2">
-        <button
-          onClick={() => setTab('REGULAR')}
-          className={`rounded px-4 py-2 text-sm font-medium ${tab === 'REGULAR' ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-700'}`}
-        >
-          専任
-        </button>
-        <button
-          onClick={() => setTab('SPOT')}
-          className={`rounded px-4 py-2 text-sm font-medium ${tab === 'SPOT' ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-700'}`}
-        >
-          スポット
-        </button>
+        {TYPE_TABS.map(t => (
+          <button
+            key={t}
+            onClick={() => setTab(t)}
+            className={`rounded px-4 py-2 text-sm font-medium ${tab === t ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-700'}`}
+          >
+            {DRIVER_TYPE_LABELS[t]}
+          </button>
+        ))}
       </div>
 
       <div className="overflow-x-auto rounded-lg border border-gray-200 bg-white shadow-sm">
@@ -126,7 +128,7 @@ export default function DriversPage() {
               <th className="px-4 py-2 text-left font-medium text-gray-500">電話番号</th>
               <th className="px-4 py-2 text-left font-medium text-gray-500">免許番号</th>
               <th className="px-4 py-2 text-left font-medium text-gray-500">ステータス</th>
-              {tab === 'SPOT' && <th className="px-4 py-2 text-left font-medium text-gray-500">稼働日</th>}
+              <th className="px-4 py-2 text-left font-medium text-gray-500">休日設定</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-gray-100">
@@ -136,13 +138,11 @@ export default function DriversPage() {
                 <td className="px-4 py-2">{d.phone}</td>
                 <td className="px-4 py-2">{d.licenseNo}</td>
                 <td className="px-4 py-2">{d.status === 'ACTIVE' ? '稼働中' : '停止中'}</td>
-                {tab === 'SPOT' && (
-                  <td className="px-4 py-2">
-                    <Link href={`/drivers/${d.id}`} className="text-blue-600 hover:underline">
-                      稼働日設定
-                    </Link>
-                  </td>
-                )}
+                <td className="px-4 py-2">
+                  <Link href={`/drivers/${d.id}`} className="text-blue-600 hover:underline">
+                    休日設定
+                  </Link>
+                </td>
               </tr>
             ))}
           </tbody>

@@ -2,7 +2,6 @@
 
 import { useEffect, useState } from 'react';
 import KpiCards from '@/components/dashboard/KpiCards';
-import WeeklyChart from '@/components/dashboard/WeeklyChart';
 import DriverStatusTable from '@/components/dashboard/DriverStatusTable';
 import PlanSummaryList from '@/components/dashboard/PlanSummaryList';
 import { PlanStatus } from '@prisma/client';
@@ -23,13 +22,14 @@ type PlanSummary = {
   completedStopCount: number;
   drivers: string[];
   trucks: string[];
+  routeStatuses: ('BEFORE_START' | 'STARTED' | 'IN_OPERATION' | 'COMPLETED')[];
   destinations: Destination[];
 };
 
 type DriverRow = {
   id: string;
   name: string;
-  type: 'REGULAR' | 'SPOT';
+  type: 'FIXED_ROUTE' | 'REGULAR' | 'SALES';
   status: 'IN_PROGRESS' | 'IDLE' | 'COMPLETED';
   truck: string | null;
 };
@@ -45,23 +45,49 @@ type DashboardData = {
   plans: PlanSummary[];
 };
 
+function todayStr() {
+  return new Date().toISOString().slice(0, 10);
+}
+
 export default function DashboardPage() {
+  const [date, setDate] = useState(todayStr());
   const [data, setData] = useState<DashboardData | null>(null);
   const [error, setError] = useState('');
 
   useEffect(() => {
-    fetch('/api/dashboard')
+    setData(null);
+    fetch(`/api/dashboard?date=${date}`)
       .then(res => res.json())
       .then(setData)
       .catch(() => setError('データの取得に失敗しました'));
-  }, []);
+  }, [date]);
 
   if (error) return <p className="text-red-600">{error}</p>;
   if (!data) return <p className="text-gray-500">読み込み中...</p>;
 
   return (
     <div className="space-y-6">
-      <h1 className="text-xl font-bold text-gray-800">ダッシュボード</h1>
+      <div className="flex items-center justify-between">
+        <h1 className="text-xl font-bold text-gray-800">ダッシュボード</h1>
+        <div className="flex items-center gap-2">
+          <label htmlFor="dashboard-date" className="text-sm text-gray-600">表示日付</label>
+          <input
+            id="dashboard-date"
+            type="date"
+            value={date}
+            onChange={e => setDate(e.target.value)}
+            className="rounded border border-gray-300 px-2 py-1 text-sm"
+          />
+          {date !== todayStr() && (
+            <button
+              onClick={() => setDate(todayStr())}
+              className="text-sm text-blue-600 hover:underline"
+            >
+              今日に戻す
+            </button>
+          )}
+        </div>
+      </div>
       <KpiCards
         planCount={data.planCount}
         completedCount={data.completedCount}
@@ -69,10 +95,7 @@ export default function DashboardPage() {
         unassignedTrucks={data.unassignedTrucks}
         totalTrucks={data.totalTrucks}
       />
-      <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
-        <WeeklyChart data={data.last7days} />
-        <DriverStatusTable drivers={data.drivers} />
-      </div>
+      <DriverStatusTable drivers={data.drivers} />
       <PlanSummaryList plans={data.plans} />
     </div>
   );

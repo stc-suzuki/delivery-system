@@ -1,11 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { canEditPlan } from '@/lib/planEditPolicy';
-import { clusterLocations, nearestNeighborOrder, TOCHIGI_DEPOT } from '@/lib/routeOptimizer';
+import { clusterLocations, orderWithTimeBudget, estimateStopTimes, TOCHIGI_DEPOT } from '@/lib/routeOptimizer';
 import {
   checkTruckAvailable,
   checkDriverAvailable,
-  checkSpotDriverAvailability,
+  checkDriverNotOnDayOff,
   MAX_STOPS_PER_ROUTE,
 } from '@/lib/planValidation';
 
@@ -26,12 +26,18 @@ export async function POST(
     }
 
     const body = await req.json();
-    const { locationIds, truckIds, driverIds, force } = body as {
+    const { locationIds, truckIds, driverIds, force, arrivalTimes, departureTime } = body as {
       locationIds: string[];
       truckIds: string[];
       driverIds: string[];
       force?: boolean;
+      arrivalTimes?: Record<string, string>;
+      departureTime?: string;
     };
+
+    if (departureTime !== undefined && !/^([01]\d|2[0-3]):[0-5]\d$/.test(departureTime)) {
+      return NextResponse.json({ error: '出発時間はHH:mm形式で指定してください' }, { status: 400 });
+    }
 
     if (!Array.isArray(locationIds) || !Array.isArray(truckIds) || !Array.isArray(driverIds)) {
       return NextResponse.json({ error: 'locationIds, truckIds, driverIds は配列で指定してください' }, { status: 400 });
@@ -62,19 +68,24 @@ export async function POST(
         const driver = await prisma.driver.findUnique({ where: { id: driverIds[i] } });
         return NextResponse.json({ error: `ドライバー ${driver?.name ?? driverIds[i]} は同日に既に割り当てられています` }, { status: 400 });
       }
-      const spotOk = await checkSpotDriverAvailability(plan.planDate, driverIds[i]);
-      if (!spotOk) {
+      const dayOffOk = await checkDriverNotOnDayOff(plan.planDate, driverIds[i]);
+      if (!dayOffOk) {
         const driver = await prisma.driver.findUnique({ where: { id: driverIds[i] } });
-        return NextResponse.json({ error: `スポットドライバー ${driver?.name ?? driverIds[i]} は当日稼働可能として登録されていません` }, { status: 400 });
+        return NextResponse.json({ error: `ドライバー ${driver?.name ?? driverIds[i]} は当日休日として設定されています` }, { status: 400 });
       }
     }
 
-    const locations = await prisma.location.findMany({
+    const rawLocations = await prisma.location.findMany({
       where: { id: { in: locationIds } },
     });
-    if (locations.length === 0) {
+    if (rawLocations.length === 0) {
       return NextResponse.json({ error: '配送先が指定されていません' }, { status: 400 });
     }
+
+    const locations = rawLocations.map(l => ({
+      ...l,
+      arrivalTime: arrivalTimes?.[l.id] ?? null,
+    }));
 
     const k = truckIds.length;
     const clusters = clusterLocations(locations, k);
@@ -88,7 +99,43 @@ export async function POST(
       }
     }
 
-    const orderedClusters = clusters.map(cluster => nearestNeighborOrder(TOCHIGI_DEPOT, cluster));
+    const settings = await prisma.systemSetting.upsert({
+      where: { id: 'default' },
+      update: {},
+      create: { id: 'default' },
+    });
+
+    const [departureHour, departureMinute] = (departureTime ?? settings.defaultDepartureTime).split(':').map(Number);
+    const departureDefault = new Date(plan.planDate);
+    departureDefault.setHours(departureHour, departureMinute, 0, 0);
+
+    const [lunchStartHour, lunchStartMinute] = settings.lunchBreakStart.split(':').map(Number);
+    const lunchStart = new Date(plan.planDate);
+    lunchStart.setHours(lunchStartHour, lunchStartMinute, 0, 0);
+    const [lunchEndHour, lunchEndMinute] = settings.lunchBreakEnd.split(':').map(Number);
+    const lunchEnd = new Date(plan.planDate);
+    lunchEnd.setHours(lunchEndHour, lunchEndMinute, 0, 0);
+    const lunchBreak = lunchEnd.getTime() > lunchStart.getTime() ? { start: lunchStart, end: lunchEnd } : undefined;
+
+    const orderedClusters = clusters.map(cluster =>
+      orderWithTimeBudget(TOCHIGI_DEPOT, departureDefault, cluster, lunchBreak)
+    );
+
+    const timedClusters = orderedClusters.map(cluster =>
+      estimateStopTimes(TOCHIGI_DEPOT, departureDefault, cluster, lunchBreak, settings.defaultStopDurationMinutes)
+    );
+
+    const toHHMM = (d: Date) => `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+    const warnings: string[] = [];
+    timedClusters.forEach(cluster =>
+      cluster.forEach(stop => {
+        if (stop.timeConflict) {
+          warnings.push(
+            `${stop.name}: 希望到着時刻 ${toHHMM(new Date(stop.arrivalTime as string))} には移動時間の都合で間に合わない可能性があります（推定到着 ${toHHMM(stop.estimatedTime)}）`
+          );
+        }
+      })
+    );
 
     const result = await prisma.$transaction(async tx => {
       // 既存ルートを差し替え
@@ -107,16 +154,19 @@ export async function POST(
             truckId: truckIds[i],
             driverId: driverIds[i],
             sortOrder: i,
+            departureTime: departureDefault,
           },
         });
 
-        const stops = orderedClusters[i] ?? [];
+        const stops = timedClusters[i] ?? [];
         for (let j = 0; j < stops.length; j++) {
           await tx.deliveryStop.create({
             data: {
               routeId: route.id,
               locationId: stops[j].id,
               stopOrder: j,
+              scheduledTime: stops[j].estimatedTime,
+              isTimeFixed: !!stops[j].arrivalTime,
             },
           });
         }
@@ -139,7 +189,7 @@ export async function POST(
       },
     });
 
-    return NextResponse.json({ routeIds: result, plan: updatedPlan });
+    return NextResponse.json({ routeIds: result, plan: updatedPlan, warnings });
   } catch (error) {
     console.error(error);
     return NextResponse.json({ error: 'ルート最適化に失敗しました' }, { status: 500 });
