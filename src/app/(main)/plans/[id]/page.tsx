@@ -82,6 +82,7 @@ export default function PlanDetailPage() {
   const [routes, setRoutes] = useState<RouteData[]>([]);
   const [assignmentWarning, setAssignmentWarning] = useState('');
   const [checkingAssignment, setCheckingAssignment] = useState(false);
+  const [showManualAdjust, setShowManualAdjust] = useState(false);
 
   async function fetchAll() {
     const [planRes, locRes, truckRes, driverRes, settingsRes] = await Promise.all([
@@ -652,32 +653,43 @@ export default function PlanDetailPage() {
             </div>
           </div>
 
-          <button
-            onClick={() => handleOptimize(false)}
-            disabled={
-              !editable ||
-              busy ||
-              checkingAssignment ||
-              !!assignmentWarning ||
-              selectedLocationIds.size === 0 ||
-              !assignments[0].truckId ||
-              !assignments[0].driverId
-            }
-            className="rounded bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50"
-          >
-            {busy ? '最適化中...' : '自動最適化'}
-          </button>
-
-          <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
-            <div className="space-y-3">
-              {routes.map(route => (
-                <RouteCard key={route.id} route={route} onReorder={handleReorder} />
-              ))}
-            </div>
-            <div className="h-96 rounded-lg border border-gray-200 bg-white p-2 shadow-sm lg:h-auto">
-              <DeliveryMap routes={previewRoutes} />
-            </div>
+          <div className="flex gap-2">
+            <button
+              onClick={() => handleOptimize(false)}
+              disabled={
+                !editable ||
+                busy ||
+                checkingAssignment ||
+                !!assignmentWarning ||
+                selectedLocationIds.size === 0 ||
+                !assignments[0].truckId ||
+                !assignments[0].driverId
+              }
+              className="rounded bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50"
+            >
+              {busy ? '最適化中...' : '自動最適化'}
+            </button>
+            <button
+              onClick={() => setShowManualAdjust(v => !v)}
+              disabled={routes.length === 0}
+              className="rounded bg-gray-100 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-200 disabled:opacity-50"
+            >
+              {showManualAdjust ? '手動調整を閉じる' : '手動調整'}
+            </button>
           </div>
+
+          {showManualAdjust && (
+            <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+              <div className="space-y-3">
+                {routes.map(route => (
+                  <RouteCard key={route.id} route={route} onReorder={handleReorder} />
+                ))}
+              </div>
+              <div className="h-96 rounded-lg border border-gray-200 bg-white p-2 shadow-sm lg:h-auto">
+                <DeliveryMap routes={previewRoutes} />
+              </div>
+            </div>
+          )}
 
           <button
             onClick={handleProceedToConfirm}
