@@ -80,6 +80,8 @@ export default function PlanDetailPage() {
     { truckId: '', driverId: '' },
   ]);
   const [routes, setRoutes] = useState<RouteData[]>([]);
+  const [assignmentWarning, setAssignmentWarning] = useState('');
+  const [checkingAssignment, setCheckingAssignment] = useState(false);
 
   async function fetchAll() {
     const [planRes, locRes, truckRes, driverRes, settingsRes] = await Promise.all([
@@ -253,8 +255,34 @@ export default function PlanDetailPage() {
     return true;
   }
 
+  async function checkAssignment(truckId: string, driverId: string) {
+    if (!truckId || !driverId) {
+      setAssignmentWarning('');
+      return;
+    }
+    setCheckingAssignment(true);
+    try {
+      const res = await fetch(`/api/plans/${planId}/check-assignment`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ truckId, driverId }),
+      });
+      const data = await res.json();
+      setAssignmentWarning(res.ok ? '' : data.error);
+    } catch {
+      setAssignmentWarning('');
+    } finally {
+      setCheckingAssignment(false);
+    }
+  }
+
   function updateAssignment(index: number, field: 'truckId' | 'driverId', value: string) {
-    setAssignments(prev => prev.map((a, i) => (i === index ? { ...a, [field]: value } : a)));
+    setAssignments(prev => {
+      const next = prev.map((a, i) => (i === index ? { ...a, [field]: value } : a));
+      const a = next[index];
+      checkAssignment(a.truckId, a.driverId);
+      return next;
+    });
   }
 
   async function handleOptimize(force = false) {
@@ -560,6 +588,10 @@ export default function PlanDetailPage() {
                 ))}
               </select>
             </div>
+            {checkingAssignment && <p className="mt-2 text-xs text-gray-400">重複を確認中...</p>}
+            {assignmentWarning && (
+              <p className="mt-2 rounded bg-red-50 p-2 text-xs text-red-600">{assignmentWarning}</p>
+            )}
           </div>
 
           <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
@@ -622,7 +654,15 @@ export default function PlanDetailPage() {
 
           <button
             onClick={() => handleOptimize(false)}
-            disabled={!editable || busy || selectedLocationIds.size === 0 || !assignments[0].truckId || !assignments[0].driverId}
+            disabled={
+              !editable ||
+              busy ||
+              checkingAssignment ||
+              !!assignmentWarning ||
+              selectedLocationIds.size === 0 ||
+              !assignments[0].truckId ||
+              !assignments[0].driverId
+            }
             className="rounded bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50"
           >
             {busy ? '最適化中...' : '自動最適化'}
@@ -641,7 +681,7 @@ export default function PlanDetailPage() {
 
           <button
             onClick={handleProceedToConfirm}
-            disabled={!editable || busy || routes.length === 0}
+            disabled={!editable || busy || checkingAssignment || !!assignmentWarning || routes.length === 0}
             className="rounded bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50"
           >
             次へ（確認）
