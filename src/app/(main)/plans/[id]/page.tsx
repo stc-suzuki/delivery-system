@@ -5,12 +5,10 @@ import { useParams, useRouter } from 'next/navigation';
 import dynamic from 'next/dynamic';
 import { format, addDays } from 'date-fns';
 import PlanStatusBadge from '@/components/plans/PlanStatusBadge';
-import RouteCard, { RouteData, RouteStop } from '@/components/plans/RouteCard';
-import type { RouteForMap } from '@/components/map/DeliveryMap';
+import type { RouteData } from '@/components/plans/RouteCard';
 import DispatchGanttChart, { GanttRoute } from '@/components/plans/DispatchGanttChart';
 import { getEditWarning } from '@/lib/planEditPolicy';
 import { DRIVER_TYPE_LABELS } from '@/lib/driverSchedule';
-import { estimateStopTimes, TOCHIGI_DEPOT, LunchBreak } from '@/lib/routeOptimizer';
 import type { DeliveryPlan, DriverType } from '@prisma/client';
 
 const DeliveryMap = dynamic(() => import('@/components/map/DeliveryMap'), { ssr: false });
@@ -75,12 +73,6 @@ export default function PlanDetailPage() {
   const [locSearch, setLocSearch] = useState('');
   const [arrivalTimes, setArrivalTimes] = useState<Record<string, string>>({});
   const [departureTime, setDepartureTime] = useState('');
-  const [settings, setSettings] = useState<{
-    defaultDepartureTime: string;
-    lunchBreakStart: string;
-    lunchBreakEnd: string;
-    defaultStopDurationMinutes: number;
-  } | null>(null);
 
   // Step2
   const [assignments, setAssignments] = useState<{ truckId: string; driverId: string }[]>([
@@ -89,7 +81,6 @@ export default function PlanDetailPage() {
   const [routes, setRoutes] = useState<RouteData[]>([]);
   const [assignmentWarning, setAssignmentWarning] = useState('');
   const [checkingAssignment, setCheckingAssignment] = useState(false);
-  const [showManualAdjust, setShowManualAdjust] = useState(false);
 
   async function fetchAll() {
     const [planRes, locRes, truckRes, driverRes, settingsRes] = await Promise.all([
@@ -106,7 +97,6 @@ export default function PlanDetailPage() {
     setTrucks(await truckRes.json());
     setDrivers(await driverRes.json());
     const settingsData = await settingsRes.json();
-    setSettings(settingsData);
 
     if (planData.routes.length > 0) {
       const ids = new Set<string>();
@@ -196,12 +186,6 @@ export default function PlanDetailPage() {
     color: r.color,
     departureTime: r.departureTime,
     stops: r.stops.map(s => ({ id: s.id, name: s.name, scheduledTime: s.scheduledTime, isTimeFixed: s.isTimeFixed })),
-  }));
-
-  const previewRoutes: RouteForMap[] = routes.map(r => ({
-    id: r.id,
-    color: r.color,
-    stops: r.stops.map(s => ({ lat: s.lat, lng: s.lng, order: s.stopOrder, name: s.name })),
   }));
 
   function toggleLocation(id: string) {
@@ -340,34 +324,6 @@ export default function PlanDetailPage() {
     }
   }
 
-  // 手動並べ替え後、新しい順序に基づいて各停車地の到着予定時刻を再計算する
-  function recomputeStopTimes(stops: RouteStop[]): RouteStop[] {
-    if (!settings || !planDate || !departureTime) return stops;
-    const depDate = new Date(`${planDate}T${departureTime}:00`);
-    const lunchStart = new Date(`${planDate}T${settings.lunchBreakStart}:00`);
-    const lunchEnd = new Date(`${planDate}T${settings.lunchBreakEnd}:00`);
-    const lunchBreak: LunchBreak | undefined =
-      lunchEnd.getTime() > lunchStart.getTime() ? { start: lunchStart, end: lunchEnd } : undefined;
-
-    const withArrival = stops.map(s => ({ ...s, arrivalTime: s.isTimeFixed ? s.scheduledTime : null }));
-    const timed = estimateStopTimes(TOCHIGI_DEPOT, depDate, withArrival, lunchBreak, settings.defaultStopDurationMinutes);
-    return timed.map(t => ({
-      id: t.id,
-      locationId: t.locationId,
-      name: t.name,
-      lat: t.lat,
-      lng: t.lng,
-      stopOrder: t.stopOrder,
-      scheduledTime: t.estimatedTime.toISOString(),
-      isTimeFixed: t.isTimeFixed,
-    }));
-  }
-
-  function handleReorder(routeId: string, stops: RouteStop[]) {
-    const recomputed = recomputeStopTimes(stops);
-    setRoutes(prev => prev.map(r => (r.id === routeId ? { ...r, stops: recomputed } : r)));
-  }
-
   async function handleProceedToConfirm() {
     setBusy(true);
     setError('');
@@ -385,13 +341,7 @@ export default function PlanDetailPage() {
         body: JSON.stringify({
           routes: routes.map(r => ({
             id: r.id,
-            stops: r.stops.map(s => ({
-              id: s.id,
-              locationId: s.locationId,
-              stopOrder: s.stopOrder,
-              scheduledTime: s.scheduledTime,
-              isTimeFixed: s.isTimeFixed,
-            })),
+            stops: r.stops.map(s => ({ id: s.id, locationId: s.locationId, stopOrder: s.stopOrder })),
           })),
         }),
       });
@@ -691,43 +641,21 @@ export default function PlanDetailPage() {
             </div>
           </div>
 
-          <div className="flex gap-2">
-            <button
-              onClick={() => handleOptimize(false)}
-              disabled={
-                !editable ||
-                busy ||
-                checkingAssignment ||
-                !!assignmentWarning ||
-                selectedLocationIds.size === 0 ||
-                !assignments[0].truckId ||
-                !assignments[0].driverId
-              }
-              className="rounded bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50"
-            >
-              {busy ? '最適化中...' : '自動最適化'}
-            </button>
-            <button
-              onClick={() => setShowManualAdjust(v => !v)}
-              disabled={routes.length === 0}
-              className="rounded bg-gray-100 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-200 disabled:opacity-50"
-            >
-              {showManualAdjust ? '手動調整を閉じる' : '手動調整'}
-            </button>
-          </div>
-
-          {showManualAdjust && (
-            <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
-              <div className="space-y-3">
-                {routes.map(route => (
-                  <RouteCard key={route.id} route={route} onReorder={handleReorder} />
-                ))}
-              </div>
-              <div className="h-96 rounded-lg border border-gray-200 bg-white p-2 shadow-sm lg:h-auto">
-                <DeliveryMap routes={previewRoutes} />
-              </div>
-            </div>
-          )}
+          <button
+            onClick={() => handleOptimize(false)}
+            disabled={
+              !editable ||
+              busy ||
+              checkingAssignment ||
+              !!assignmentWarning ||
+              selectedLocationIds.size === 0 ||
+              !assignments[0].truckId ||
+              !assignments[0].driverId
+            }
+            className="rounded bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50"
+          >
+            {busy ? '最適化中...' : '自動最適化'}
+          </button>
 
           <button
             onClick={handleProceedToConfirm}
