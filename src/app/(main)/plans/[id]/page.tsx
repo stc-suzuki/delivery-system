@@ -291,6 +291,7 @@ export default function PlanDetailPage() {
           .filter(([id, time]) => selectedLocationIds.has(id) && time)
           .map(([id, time]) => [id, timeToIso(time)])
       );
+      await saveAssignmentAndDate();
       const res = await fetch(`/api/plans/${planId}/optimize`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -317,6 +318,7 @@ export default function PlanDetailPage() {
       if (data.warnings?.length > 0) {
         alert(`以下の到着希望時刻には間に合わない可能性があります:\n\n${data.warnings.join('\n')}`);
       }
+      setStep(2);
     } catch (err) {
       setError(err instanceof Error ? err.message : '最適化に失敗しました');
     } finally {
