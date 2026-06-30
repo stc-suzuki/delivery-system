@@ -654,15 +654,16 @@ export default function PlanDetailPage() {
             }
             className="rounded bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50"
           >
-            {busy ? '最適化中...' : '自動最適化'}
+            {busy ? '最適化中...' : 'ルート最適化して確認へ'}
           </button>
 
           <button
             onClick={handleProceedToConfirm}
             disabled={!editable || busy || checkingAssignment || !!assignmentWarning || routes.length === 0}
             className="rounded bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50"
+            style={{ marginTop: '1cm' }}
           >
-            次へ（確認）
+            ルート変更せずに確認へ
           </button>
         </div>
       )}
