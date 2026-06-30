@@ -23,7 +23,13 @@ export async function PATCH(
       routes: {
         id: string;
         departureTime?: string | null;
-        stops: { id: string; locationId?: string; stopOrder: number; scheduledTime?: string | null }[];
+        stops: {
+          id: string;
+          locationId?: string;
+          stopOrder: number;
+          scheduledTime?: string | null;
+          isTimeFixed?: boolean;
+        }[];
       }[];
     };
 
@@ -61,7 +67,7 @@ export async function PATCH(
               ...(stop.scheduledTime !== undefined
                 ? {
                     scheduledTime: stop.scheduledTime ? new Date(stop.scheduledTime) : null,
-                    isTimeFixed: !!stop.scheduledTime,
+                    isTimeFixed: stop.isTimeFixed ?? !!stop.scheduledTime,
                   }
                 : {}),
             },

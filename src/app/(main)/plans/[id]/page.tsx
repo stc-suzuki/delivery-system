@@ -10,6 +10,7 @@ import type { RouteForMap } from '@/components/map/DeliveryMap';
 import DispatchGanttChart, { GanttRoute } from '@/components/plans/DispatchGanttChart';
 import { getEditWarning } from '@/lib/planEditPolicy';
 import { DRIVER_TYPE_LABELS } from '@/lib/driverSchedule';
+import { estimateStopTimes, TOCHIGI_DEPOT, LunchBreak } from '@/lib/routeOptimizer';
 import type { DeliveryPlan, DriverType } from '@prisma/client';
 
 const DeliveryMap = dynamic(() => import('@/components/map/DeliveryMap'), { ssr: false });
@@ -74,6 +75,12 @@ export default function PlanDetailPage() {
   const [locSearch, setLocSearch] = useState('');
   const [arrivalTimes, setArrivalTimes] = useState<Record<string, string>>({});
   const [departureTime, setDepartureTime] = useState('');
+  const [settings, setSettings] = useState<{
+    defaultDepartureTime: string;
+    lunchBreakStart: string;
+    lunchBreakEnd: string;
+    defaultStopDurationMinutes: number;
+  } | null>(null);
 
   // Step2
   const [assignments, setAssignments] = useState<{ truckId: string; driverId: string }[]>([
@@ -99,6 +106,7 @@ export default function PlanDetailPage() {
     setTrucks(await truckRes.json());
     setDrivers(await driverRes.json());
     const settingsData = await settingsRes.json();
+    setSettings(settingsData);
 
     if (planData.routes.length > 0) {
       const ids = new Set<string>();
@@ -332,8 +340,32 @@ export default function PlanDetailPage() {
     }
   }
 
+  // 手動並べ替え後、新しい順序に基づいて各停車地の到着予定時刻を再計算する
+  function recomputeStopTimes(stops: RouteStop[]): RouteStop[] {
+    if (!settings || !planDate || !departureTime) return stops;
+    const depDate = new Date(`${planDate}T${departureTime}:00`);
+    const lunchStart = new Date(`${planDate}T${settings.lunchBreakStart}:00`);
+    const lunchEnd = new Date(`${planDate}T${settings.lunchBreakEnd}:00`);
+    const lunchBreak: LunchBreak | undefined =
+      lunchEnd.getTime() > lunchStart.getTime() ? { start: lunchStart, end: lunchEnd } : undefined;
+
+    const withArrival = stops.map(s => ({ ...s, arrivalTime: s.isTimeFixed ? s.scheduledTime : null }));
+    const timed = estimateStopTimes(TOCHIGI_DEPOT, depDate, withArrival, lunchBreak, settings.defaultStopDurationMinutes);
+    return timed.map(t => ({
+      id: t.id,
+      locationId: t.locationId,
+      name: t.name,
+      lat: t.lat,
+      lng: t.lng,
+      stopOrder: t.stopOrder,
+      scheduledTime: t.estimatedTime.toISOString(),
+      isTimeFixed: t.isTimeFixed,
+    }));
+  }
+
   function handleReorder(routeId: string, stops: RouteStop[]) {
-    setRoutes(prev => prev.map(r => (r.id === routeId ? { ...r, stops } : r)));
+    const recomputed = recomputeStopTimes(stops);
+    setRoutes(prev => prev.map(r => (r.id === routeId ? { ...r, stops: recomputed } : r)));
   }
 
   async function handleProceedToConfirm() {
@@ -353,7 +385,13 @@ export default function PlanDetailPage() {
         body: JSON.stringify({
           routes: routes.map(r => ({
             id: r.id,
-            stops: r.stops.map(s => ({ id: s.id, locationId: s.locationId, stopOrder: s.stopOrder })),
+            stops: r.stops.map(s => ({
+              id: s.id,
+              locationId: s.locationId,
+              stopOrder: s.stopOrder,
+              scheduledTime: s.scheduledTime,
+              isTimeFixed: s.isTimeFixed,
+            })),
           })),
         }),
       });
