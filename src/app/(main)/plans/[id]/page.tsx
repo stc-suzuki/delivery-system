@@ -641,30 +641,32 @@ export default function PlanDetailPage() {
             </div>
           </div>
 
-          <button
-            onClick={() => handleOptimize(false)}
-            disabled={
-              !editable ||
-              busy ||
-              checkingAssignment ||
-              !!assignmentWarning ||
-              selectedLocationIds.size === 0 ||
-              !assignments[0].truckId ||
-              !assignments[0].driverId
-            }
-            className="rounded bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50"
-          >
-            {busy ? '最適化中...' : 'ルート最適化して確認へ'}
-          </button>
+          <div className="flex items-center">
+            <button
+              onClick={() => handleOptimize(false)}
+              disabled={
+                !editable ||
+                busy ||
+                checkingAssignment ||
+                !!assignmentWarning ||
+                selectedLocationIds.size === 0 ||
+                !assignments[0].truckId ||
+                !assignments[0].driverId
+              }
+              className="rounded bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50"
+            >
+              {busy ? '最適化中...' : 'ルート最適化して確認へ'}
+            </button>
 
-          <button
-            onClick={handleProceedToConfirm}
-            disabled={!editable || busy || checkingAssignment || !!assignmentWarning || routes.length === 0}
-            className="rounded bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50"
-            style={{ marginTop: '1cm' }}
-          >
-            ルート変更せずに確認へ
-          </button>
+            <button
+              onClick={handleProceedToConfirm}
+              disabled={!editable || busy || checkingAssignment || !!assignmentWarning || routes.length === 0}
+              className="rounded bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50"
+              style={{ marginLeft: '1cm' }}
+            >
+              ルート変更せずに確認へ
+            </button>
+          </div>
         </div>
       )}
 
