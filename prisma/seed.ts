@@ -4,6 +4,20 @@ import bcrypt from 'bcryptjs';
 const prisma = new PrismaClient();
 
 const CITIES = ['宇都宮市', '栃木市', '小山市', '足利市', '佐野市', '鹿沼市', '日光市', '真岡市', '大田原市', '矢板市'];
+// 各市の代表点（市役所付近の概算値）。実際のジオコーディングは行わず、住所の市町村名と
+// 大きく矛盾しない範囲にテストデータの座標を収めるための近似値
+const CITY_CENTERS: Record<string, { lat: number; lng: number }> = {
+  宇都宮市: { lat: 36.5551, lng: 139.8828 },
+  栃木市: { lat: 36.3841, lng: 139.73 },
+  小山市: { lat: 36.3145, lng: 139.8007 },
+  足利市: { lat: 36.3407, lng: 139.4497 },
+  佐野市: { lat: 36.3138, lng: 139.5779 },
+  鹿沼市: { lat: 36.5581, lng: 139.7449 },
+  日光市: { lat: 36.7199, lng: 139.6862 },
+  真岡市: { lat: 36.4356, lng: 140.0128 },
+  大田原市: { lat: 36.8664, lng: 140.0106 },
+  矢板市: { lat: 36.8129, lng: 139.9143 },
+};
 const STORE_TYPES = ['店', 'センター', '工場', '営業所', '支店', '倉庫', '販売店'];
 const STORE_NAMES = ['さくら', 'みどり', 'あおぞら', 'ひまわり', 'もみじ', 'うめ', 'たんぽぽ', 'すずらん', 'けやき', 'いちょう'];
 const SURNAMES = ['佐藤', '鈴木', '高橋', '田中', '渡辺', '伊藤', '山本', '中村', '小林', '加藤', '吉田', '山田', '佐々木', '山口', '松本', '井上', '木村', '林', '清水', '斎藤'];
@@ -29,7 +43,7 @@ async function main() {
       email: 'admin@example.com',
       password: hashedPassword,
       name: '管理者',
-      role: 'ADMIN',
+      role: 'SYSTEM_ADMIN',
     },
   });
   console.log('管理者ユーザー作成完了');
@@ -50,6 +64,23 @@ async function main() {
   }
   console.log('トラック15台作成完了');
 
+  // 固定ルートドライバー10名
+  for (let i = 1; i <= 10; i++) {
+    const licenseNo = `FIX-${String(i).padStart(4, '0')}`;
+    await prisma.driver.upsert({
+      where: { licenseNo },
+      update: {},
+      create: {
+        name: `${SURNAMES[i % SURNAMES.length]} 太郎${i}`,
+        phone: `090-0000-${String(1000 + i)}`,
+        type: DriverType.FIXED_ROUTE,
+        licenseNo,
+        status: 'ACTIVE',
+      },
+    });
+  }
+  console.log('固定ルートドライバー10名作成完了');
+
   // 専任ドライバー10名
   for (let i = 1; i <= 10; i++) {
     const licenseNo = `REG-${String(i).padStart(4, '0')}`;
@@ -57,8 +88,8 @@ async function main() {
       where: { licenseNo },
       update: {},
       create: {
-        name: `${SURNAMES[i % SURNAMES.length]} 太郎${i}`,
-        phone: `090-0000-${String(1000 + i)}`,
+        name: `${SURNAMES[(i + 10) % SURNAMES.length]} 次郎${i}`,
+        phone: `080-0000-${String(2000 + i)}`,
         type: DriverType.REGULAR,
         licenseNo,
         status: 'ACTIVE',
@@ -67,40 +98,22 @@ async function main() {
   }
   console.log('専任ドライバー10名作成完了');
 
-  // スポットドライバー10名
+  // 営業ドライバー10名
   for (let i = 1; i <= 10; i++) {
-    const licenseNo = `SPOT-${String(i).padStart(4, '0')}`;
-    const driver = await prisma.driver.upsert({
+    const licenseNo = `SALES-${String(i).padStart(4, '0')}`;
+    await prisma.driver.upsert({
       where: { licenseNo },
       update: {},
       create: {
-        name: `${SURNAMES[(i + 10) % SURNAMES.length]} 次郎${i}`,
-        phone: `080-0000-${String(2000 + i)}`,
-        type: DriverType.SPOT,
+        name: `${SURNAMES[(i + 5) % SURNAMES.length]} 三郎${i}`,
+        phone: `070-0000-${String(3000 + i)}`,
+        type: DriverType.SALES,
         licenseNo,
         status: 'ACTIVE',
       },
     });
-
-    // 今後30日のうちランダムに稼働日を登録
-    const dates: Date[] = [];
-    for (let d = 0; d < 30; d++) {
-      if (Math.random() < 0.4) {
-        const date = new Date();
-        date.setHours(0, 0, 0, 0);
-        date.setDate(date.getDate() + d);
-        dates.push(date);
-      }
-    }
-    for (const date of dates) {
-      await prisma.spotAvailability.upsert({
-        where: { driverId_date: { driverId: driver.id, date } },
-        update: {},
-        create: { driverId: driver.id, date },
-      });
-    }
   }
-  console.log('スポットドライバー10名作成完了');
+  console.log('営業ドライバー10名作成完了');
 
   // 配送先500件
   const existingCount = await prisma.location.count();
@@ -110,13 +123,14 @@ async function main() {
       const city = CITIES[randInt(0, CITIES.length - 1)];
       const storeName = `${STORE_NAMES[randInt(0, STORE_NAMES.length - 1)]}${STORE_TYPES[randInt(0, STORE_TYPES.length - 1)]}${city}${i}号店`;
       const address = `栃木県${city}${randInt(1, 9)}丁目${randInt(1, 30)}番${randInt(1, 20)}号`;
+      const center = CITY_CENTERS[city];
       data.push({
         name: storeName,
         address,
         formattedAddress: address,
         phone: `028-${randInt(100, 999)}-${randInt(1000, 9999)}`,
-        lat: randFloat(36.2, 36.9),
-        lng: randFloat(139.5, 140.1),
+        lat: center.lat + randFloat(-0.03, 0.03),
+        lng: center.lng + randFloat(-0.03, 0.03),
         city,
       });
     }

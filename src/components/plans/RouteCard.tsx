@@ -3,7 +3,7 @@
 import { DndContext, closestCenter, DragEndEvent } from '@dnd-kit/core';
 import { SortableContext, verticalListSortingStrategy, useSortable, arrayMove } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
-import { routeDistance, TOCHIGI_DEPOT } from '@/lib/routeOptimizer';
+import { routeDistance, haversine, TOCHIGI_DEPOT } from '@/lib/routeOptimizer';
 
 export type RouteStop = {
   id: string;
@@ -12,6 +12,9 @@ export type RouteStop = {
   lat: number;
   lng: number;
   stopOrder: number;
+  scheduledTime: string | null;
+  requestedArrivalTime: string | null;
+  isTimeFixed: boolean;
 };
 
 export type RouteData = {
@@ -19,6 +22,7 @@ export type RouteData = {
   truckPlateNo: string;
   driverName: string;
   color: string;
+  departureTime: string | null;
   stops: RouteStop[];
 };
 
@@ -49,7 +53,9 @@ function SortableStop({ stop, index }: { stop: RouteStop; index: number }) {
 }
 
 export default function RouteCard({ route, onReorder }: Props) {
-  const distance = routeDistance(TOCHIGI_DEPOT, route.stops);
+  // 本社から最後の配送先までの片道距離に、本社へ戻る分の距離を加えた往復距離
+  const lastStop = route.stops[route.stops.length - 1];
+  const distance = routeDistance(TOCHIGI_DEPOT, route.stops) + (lastStop ? haversine(lastStop, TOCHIGI_DEPOT) : 0);
 
   function handleDragEnd(event: DragEndEvent) {
     const { active, over } = event;
@@ -61,15 +67,15 @@ export default function RouteCard({ route, onReorder }: Props) {
   }
 
   return (
-    <div className="rounded-lg border border-gray-200 bg-white p-3 shadow-sm">
+    <div className="rounded-lg border border-[#E5EAF2] bg-[#F2F5F9] p-3 shadow-sm">
       <div className="mb-2 flex items-center justify-between">
         <div className="flex items-center gap-2">
           <span className="h-3 w-3 rounded-full" style={{ backgroundColor: route.color }} />
           <span className="text-sm font-semibold">{route.truckPlateNo}</span>
-          <span className="text-sm text-gray-500">/ {route.driverName}</span>
+          <span className="text-sm text-[#4B5563]">/ {route.driverName}</span>
         </div>
-        <div className="text-xs text-gray-500">
-          {route.stops.length}件 ・ 約{distance.toFixed(1)}km
+        <div className="text-xs text-[#4B5563]">
+          {route.stops.length}件 ・ 約{distance.toFixed(1)}km（本社帰着まで）
         </div>
       </div>
       <DndContext collisionDetection={closestCenter} onDragEnd={handleDragEnd}>

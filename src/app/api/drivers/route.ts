@@ -1,12 +1,16 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
-import { DriverType } from '@prisma/client';
+import { DriverStatus, DriverType } from '@prisma/client';
 
 export async function GET(req: NextRequest) {
   try {
     const type = req.nextUrl.searchParams.get('type');
+    const status = req.nextUrl.searchParams.get('status');
     const drivers = await prisma.driver.findMany({
-      where: type ? { type: type as DriverType } : undefined,
+      where: {
+        ...(type && { type: type as DriverType }),
+        ...(status && { status: status as DriverStatus }),
+      },
       orderBy: { createdAt: 'desc' },
     });
     return NextResponse.json(drivers);

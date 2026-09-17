@@ -4,7 +4,7 @@ import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContai
 
 export default function WeeklyChart({ data }: { data: { date: string; count: number }[] }) {
   return (
-    <div className="rounded-lg border border-gray-200 bg-white p-4 shadow-sm">
+    <div className="rounded-lg border border-[#E5EAF2] bg-[#F2F5F9] p-4 shadow-sm">
       <h3 className="mb-2 text-sm font-semibold text-gray-700">過去7日の配送完了件数</h3>
       <ResponsiveContainer width="100%" height={250}>
         <LineChart data={data}>

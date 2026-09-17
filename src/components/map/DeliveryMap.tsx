@@ -22,9 +22,11 @@ export type RouteForMap = {
 type Props = {
   routes: RouteForMap[];
   onLocationClick?: (lngLat: { lat: number; lng: number }) => void;
+  // 地図の初期表示中心（本社座標）。未指定時はSystemSetting未取得時のフォールバック値を使う
+  depotCenter?: { lat: number; lng: number };
 };
 
-export default function DeliveryMap({ routes, onLocationClick }: Props) {
+export default function DeliveryMap({ routes, onLocationClick, depotCenter = TOCHIGI_DEPOT }: Props) {
   const containerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<L.Map | null>(null);
   const layersRef = useRef<L.Layer[]>([]);
@@ -33,7 +35,7 @@ export default function DeliveryMap({ routes, onLocationClick }: Props) {
     if (!containerRef.current || mapRef.current) return;
 
     const map = L.map(containerRef.current).setView(
-      [TOCHIGI_DEPOT.lat, TOCHIGI_DEPOT.lng],
+      [depotCenter.lat, depotCenter.lng],
       10
     );
     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {

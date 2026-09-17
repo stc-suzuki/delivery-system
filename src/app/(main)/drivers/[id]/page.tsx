@@ -2,6 +2,8 @@
 
 import { useEffect, useState } from 'react';
 import { useParams } from 'next/navigation';
+import { CalendarOff } from 'lucide-react';
+import PageHeader from '@/components/ui/PageHeader';
 import {
   startOfMonth,
   endOfMonth,
@@ -14,28 +16,43 @@ import {
   isSameMonth,
 } from 'date-fns';
 import { ja } from 'date-fns/locale';
+import { isDefaultDayOff, DRIVER_TYPE_LABELS } from '@/lib/driverSchedule';
+import type { DriverType } from '@prisma/client';
 
-export default function SpotDriverAvailabilityPage() {
+type DriverInfo = { name: string; type: DriverType; status: string };
+
+export default function DriverDayOffPage() {
   const params = useParams();
   const driverId = params.id as string;
 
+  const [driver, setDriver] = useState<DriverInfo | null>(null);
   const [month, setMonth] = useState(() => new Date());
   const [dates, setDates] = useState<Set<string>>(new Set());
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState('');
 
-  async function fetchAvailability() {
+  async function fetchDriver() {
+    const res = await fetch('/api/drivers');
+    const all: (DriverInfo & { id: string })[] = await res.json();
+    setDriver(all.find(d => d.id === driverId) ?? null);
+  }
+
+  async function fetchDayOffs() {
     const res = await fetch(`/api/drivers/${driverId}/availability`);
     const data: { date: string }[] = await res.json();
     setDates(new Set(data.map(d => d.date.slice(0, 10))));
   }
 
   useEffect(() => {
-    fetchAvailability();
+    fetchDriver();
+    fetchDayOffs();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [driverId]);
 
+  const isInactive = driver?.status === 'INACTIVE';
+
   function toggle(day: Date) {
+    if (isDefaultDayOff(day) || isInactive) return;
     const key = format(day, 'yyyy-MM-dd');
     setDates(prev => {
       const next = new Set(prev);
@@ -71,7 +88,31 @@ export default function SpotDriverAvailabilityPage() {
 
   return (
     <div className="space-y-4">
-      <h1 className="text-xl font-bold text-gray-800">スポットドライバー稼働日設定</h1>
+      <PageHeader
+        icon={CalendarOff}
+        title="休日設定"
+        tint="gray"
+        description={
+          driver ? (
+            <>
+              <span className="font-semibold text-gray-700">{driver.name}</span>
+              <span className="ml-2 text-gray-500">（{DRIVER_TYPE_LABELS[driver.type]}）</span>
+            </>
+          ) : (
+            '土日・祝日はデフォルトで休日です。それ以外の平日をクリックすると休日として設定できます。'
+          )
+        }
+      />
+      {driver && (
+        <p className="text-sm text-gray-500">
+          土日・祝日はデフォルトで休日です。それ以外の平日をクリックすると休日として設定できます。
+        </p>
+      )}
+      {isInactive && (
+        <p className="rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm text-amber-800">
+          このドライバーは削除済みのため、休日設定を変更できません。
+        </p>
+      )}
 
       <div className="flex items-center justify-between">
         <button onClick={() => setMonth(m => subMonths(m, 1))} className="rounded bg-gray-100 px-3 py-1 text-sm hover:bg-gray-200">
@@ -89,26 +130,40 @@ export default function SpotDriverAvailabilityPage() {
         ))}
         {days.map(day => {
           const key = format(day, 'yyyy-MM-dd');
-          const active = dates.has(key);
+          const defaultOff = isDefaultDayOff(day);
+          const manualOff = dates.has(key);
+          const off = defaultOff || manualOff;
           const inMonth = isSameMonth(day, month);
           return (
             <button
               key={key}
               onClick={() => toggle(day)}
-              className={`aspect-square rounded text-sm ${
-                active ? 'bg-blue-600 text-white' : 'bg-gray-50 text-gray-700 hover:bg-gray-100'
+              disabled={defaultOff || isInactive}
+              className={`flex h-12 flex-col items-center justify-center rounded text-sm leading-tight ${
+                off
+                  ? defaultOff
+                    ? 'cursor-default bg-red-100 text-red-600'
+                    : 'bg-blue-600 text-white'
+                  : `bg-gray-50 text-gray-700 ${isInactive ? 'cursor-not-allowed' : 'hover:bg-gray-100'}`
               } ${!inMonth ? 'opacity-30' : ''}`}
             >
-              {format(day, 'd')}
+              <span>{format(day, 'd')}</span>
+              <span className="text-[10px]">{off ? '休日' : '稼働日'}</span>
             </button>
           );
         })}
       </div>
 
+      <div className="flex items-center gap-4 text-xs text-gray-500">
+        <span className="flex items-center gap-1"><span className="h-3 w-3 rounded bg-red-100" />土日・祝日（休日）</span>
+        <span className="flex items-center gap-1"><span className="h-3 w-3 rounded bg-blue-600" />設定した休日</span>
+        <span className="flex items-center gap-1"><span className="h-3 w-3 rounded bg-gray-50 border border-gray-200" />稼働日</span>
+      </div>
+
       <div className="flex items-center gap-3">
         <button
           onClick={handleSave}
-          disabled={saving}
+          disabled={saving || isInactive}
           className="rounded bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50"
         >
           {saving ? '保存中...' : '保存'}

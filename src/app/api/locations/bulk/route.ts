@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import Papa from 'papaparse';
 import { prisma } from '@/lib/prisma';
 import { geocodeAddress } from '@/lib/geocode';
+import { extractCity } from '@/lib/address';
 import { BulkLocationResult } from '@/types';
 
 type CsvRow = { name: string; address: string; phone?: string };
@@ -27,6 +28,7 @@ export async function POST(req: NextRequest) {
           throw new Error('name または address が未入力です');
         }
         const geo = await geocodeAddress(row.address);
+        const city = extractCity(row.address);
         await prisma.location.create({
           data: {
             name: row.name,
@@ -35,6 +37,7 @@ export async function POST(req: NextRequest) {
             formattedAddress: geo.formattedAddress,
             lat: geo.lat,
             lng: geo.lng,
+            ...(city && { city }),
           },
         });
         result.success += 1;

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { geocodeAddress } from '@/lib/geocode';
+import { extractCity } from '@/lib/address';
 
 export async function GET(req: NextRequest) {
   try {
@@ -32,6 +33,7 @@ export async function POST(req: NextRequest) {
     }
 
     const geo = await geocodeAddress(address);
+    const city = extractCity(address);
 
     const location = await prisma.location.create({
       data: {
@@ -41,6 +43,7 @@ export async function POST(req: NextRequest) {
         formattedAddress: geo.formattedAddress,
         lat: geo.lat,
         lng: geo.lng,
+        ...(city && { city }),
       },
     });
 

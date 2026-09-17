@@ -11,13 +11,14 @@ model User {
   id        String   @id @default(cuid())
   email     String   @unique
   password  String
-  name      String
+  name      String   @unique
   role      UserRole @default(STAFF)
   createdAt DateTime @default(now())
 }
 
 enum UserRole {
-  ADMIN
+  SYSTEM_ADMIN
+  DELIVERY_ADMIN
   STAFF
 }
 
@@ -26,15 +27,24 @@ model Truck {
   plateNo     String      @unique
   model       String
   capacityKg  Int
+  capacityM3  Float?      // 積載可能容積（m3）。未設定の場合は積載割当エンジンの容積チェック対象外
+  bedWidth    Float?      // 荷台内寸・幅（m）。未設定の場合はSIZE_OVERチェック対象外
+  bedDepth    Float?      // 荷台内寸・奥行き（m）
+  bedHeight   Float?      // 荷台内寸・高さ（m）
   status      TruckStatus @default(AVAILABLE)
   createdAt   DateTime    @default(now())
   routes      PlanRoute[]
+  defaultDriverId String?
+  defaultDriver   Driver? @relation("TruckDefaultDriver", fields: [defaultDriverId], references: [id], onDelete: SetNull)
 }
 
 enum TruckStatus {
   AVAILABLE
   IN_USE
   MAINTENANCE
+  // 論理削除用。配送ルートの履歴（PlanRoute.truckId）が残っている場合、外部キー制約により
+  // 物理削除できないため、この状態にして新規の割当対象から外す（Driver.status: INACTIVEと同じ考え方）
+  RETIRED
 }
 
 model Driver {
@@ -46,12 +56,14 @@ model Driver {
   status     DriverStatus @default(ACTIVE)
   createdAt  DateTime   @default(now())
   routes     PlanRoute[]
-  spotDates  SpotAvailability[]
+  dayOffs    DriverDayOff[]
+  defaultForTrucks Truck[] @relation("TruckDefaultDriver")
 }
 
 enum DriverType {
+  FIXED_ROUTE
   REGULAR
-  SPOT
+  SALES
 }
 
 enum DriverStatus {
@@ -59,7 +71,8 @@ enum DriverStatus {
   INACTIVE
 }
 
-model SpotAvailability {
+// 土日・祝日に加えて、平日に手動で設定する休日
+model DriverDayOff {
   id       String   @id @default(cuid())
   driver   Driver   @relation(fields: [driverId], references: [id])
   driverId String
@@ -81,38 +94,37 @@ model Location {
   stops            DeliveryStop[]
 }
 
-model DeliveryPlan {
-  id        String       @id @default(cuid())
-  planDate  DateTime     @db.Date
-  status    PlanStatus   @default(DRAFT)
-  note      String?
-  createdBy String
-  createdAt DateTime     @default(now())
-  updatedAt DateTime     @updatedAt
-  routes    PlanRoute[]
-}
-
-enum PlanStatus {
-  DRAFT
-  CONFIRMED
-  IN_PROGRESS
-  COMPLETED
-}
-
+// トラック1台・ドライバー1名の配送ルート＝このシステムの管理単位。
+// 以前は複数ルートをDeliveryPlanという「配送計画」でまとめていたが、一覧・ダッシュボードでの
+// 集計がルート単位とプラン単位で食い違って分かりにくくなったため廃止し、下書き/確定の状態も
+// このモデルに統合した（2026-07-29決定）
 model PlanRoute {
   id            String         @id @default(cuid())
-  plan          DeliveryPlan   @relation(fields: [planId], references: [id])
-  planId        String
   truck         Truck          @relation(fields: [truckId], references: [id])
   truckId       String
   driver        Driver         @relation(fields: [driverId], references: [id])
   driverId      String
+  // 配送対象日。DeliveryStop.stopDateと同じ発想で、プランへのひも付けなしにルート単体で日付を持つ
+  routeDate     DateTime       @db.Date
+  note          String?
+  createdBy     String
   sortOrder     Int
   departureTime DateTime?
   status        RouteStatus    @default(PENDING)
+  // ドライバーが「帰社」ボタンを押した日時。全停車地が完了（status: COMPLETED）した後のみ記録可能。
+  // 配送計画一覧のガントチャートで、最終配送先から帰社までの区間を緑色にする判定に使う
+  returnedAt    DateTime?
+  // 運送開始・帰社を、ドライバー本人ではなく本部（リアルタイム追跡画面）が代理操作したか。
+  // ドライバーが操作ボタンの押し忘れた場合の訂正用。ドライバー画面に「本部による操作」と表示する
+  startedByDispatcher  Boolean  @default(false)
+  returnedByDispatcher Boolean  @default(false)
   createdAt     DateTime       @default(now())
   stops         DeliveryStop[]
   trackingLogs  TrackingLog[]
+  fuelLogs      FuelLog[]
+  trips         RouteTrip[]
+
+  @@index([routeDate])
 }
 
 enum RouteStatus {
@@ -121,17 +133,105 @@ enum RouteStatus {
   COMPLETED
 }
 
-model DeliveryStop {
-  id            String       @id @default(cuid())
-  route         PlanRoute    @relation(fields: [routeId], references: [id])
+// 複数便対応（案）：1台のトラックが1日に何度も本社と往復する場合の「便」単位。
+// PlanRouteの「トラック1台×1日＝1行」という不変条件は変えず、追加型のレイヤーとして載せる。
+// RouteTripが1件も無いPlanRouteは今まで通り単一の連続ルートとして動き（既存の全画面・全APIは
+// このモデルを一切参照しないため無改修で動き続ける）、複数便が必要な日だけこのモデルを使う。
+// PlanRoute.departureTime/status/returnedAtと同じ形の値を、便ごとに個別に持つ
+model RouteTrip {
+  id            String      @id @default(cuid())
+  route         PlanRoute   @relation(fields: [routeId], references: [id])
   routeId       String
-  location      Location     @relation(fields: [locationId], references: [id])
+  // 0始まり。その日のこのトラックの何便目か
+  tripIndex     Int
+  departureTime DateTime?
+  status        RouteStatus @default(PENDING)
+  returnedAt    DateTime?
+  startedByDispatcher  Boolean @default(false)
+  returnedByDispatcher Boolean @default(false)
+  createdAt     DateTime    @default(now())
+  stops         DeliveryStop[]
+  trackingLogs  TrackingLog[]
+  fuelLogs      FuelLog[]
+
+  @@unique([routeId, tripIndex])
+}
+
+model DeliveryStop {
+  id            String        @id @default(cuid())
+  // この荷物が対象とする配送日。プールの主キー的役割（未割当の間も必須）
+  stopDate      DateTime      @db.Date
+  // 手動でルートへ割当済みの間だけ設定される。未割当（プール中）はnull
+  route         PlanRoute?    @relation(fields: [routeId], references: [id])
+  routeId       String?
+  // このルートの中でどの便（RouteTrip）の荷物かを表す。null＝どの便にも紐付いていない
+  // （＝複数便を使わない今まで通りの単一連続ルート扱い）。routeIdとは独立して管理する
+  trip          RouteTrip?    @relation(fields: [tripId], references: [id])
+  tripId        String?
+  location      Location      @relation(fields: [locationId], references: [id])
   locationId    String
   stopOrder     Int
+  // お客様に約束した到着希望時刻そのもの。プール登録・荷物編集画面でユーザーが入力した時だけ書き換わり、
+  // reorderRoute等のルート再計算では絶対に上書きしない（移動時間の都合で守れない場合でも、この値自体は変更しない）
+  requestedArrivalTime DateTime?
+  // 現在のルート計算に基づく到着予定時刻（見込み）。requestedArrivalTimeが実現可能な間はその値と一致するが、
+  // 移動時間の都合で間に合わない場合はreorderRouteが実現可能な時刻に置き換える。表示にはrequestedArrivalTimeを優先すること
   scheduledTime DateTime?
+  isTimeFixed   Boolean       @default(false)
+  // 到着希望時刻に対し、直前の停車地からの移動時間で間に合わない場合にreorderRouteが立てるフラグ。
+  // 確定済みプランがこのフラグを持つ停車地を含んだまま計画確定されないよう、確定APIでチェックする
+  hasTimeConflict Boolean     @default(false)
   arrivedAt     DateTime?
-  status        StopStatus   @default(PENDING)
+  status        StopStatus    @default(PENDING)
   note          String?
+  packages      Package[]
+  // /api/pool の楽観ロック用。更新のたびにインクリメントし、保存時に読み込み時点のversionと
+  // 一致するかをサーバー側で確認する（同じ行を複数人が同時編集した場合の上書き検知）
+  version       Int           @default(0)
+  // 直近でこの行を作成・更新したユーザー名（表示用のスナップショット。Userの改名を追わない）。
+  // 楽観ロック競合時に「〇〇さんが更新しました」と表示するために使う
+  updatedByName String?
+  // 稼働中（IN_PROGRESS）のルートに「配送先の割当」機能で追加された（＝本社に戻って積み直した）
+  // 停車地かどうか。trueの場合のみ「未割当に戻す」操作の対象にする（出発時に既に積んでいた分は、
+  // 物理的にトラック上にあるため画面上の操作だけでは戻せない）。/optimizeで新規追加時にのみtrueを立て、
+  // 以降の更新では触らない
+  addedAfterDeparture Boolean @default(false)
+  // 完了/スキップ/未訪問（取消）を最後に変更したのが、ドライバー本人ではなく本部（リアルタイム追跡
+  // 画面）による代理操作だったか。ステータスが変わるたびに actor に応じて更新する。
+  // ドライバー画面に「完了（本部による押下）」のように表示するために使う
+  statusSetByDispatcher Boolean @default(false)
+
+  @@index([stopDate])
+  @@index([routeId])
+  @@index([tripId])
+}
+
+// 荷物マスタ。1停車地（DeliveryStop）に対して複数登録できる。
+// 体積はwidth*depth*heightで都度計算し、別途カラムには持たない
+model Package {
+  id        String       @id @default(cuid())
+  stop      DeliveryStop @relation(fields: [stopId], references: [id], onDelete: Cascade)
+  stopId    String
+  product   Product?     @relation(fields: [productId], references: [id], onDelete: SetNull)
+  productId String?
+  name      String
+  width     Float
+  depth     Float
+  height    Float
+  createdAt DateTime     @default(now())
+}
+
+// 商品マスタ。Step1で荷物を追加する際、寸法を都度手入力せず選択するために使う。
+// Package.name/width/depth/heightには選択時点の値をコピーして保存するため、
+// ここを後で編集・削除しても過去の配送計画の記録には影響しない
+model Product {
+  id        String    @id @default(cuid())
+  name      String
+  width     Float
+  depth     Float
+  height    Float
+  createdAt DateTime  @default(now())
+  packages  Package[]
 }
 
 enum StopStatus {
@@ -140,11 +240,67 @@ enum StopStatus {
   SKIPPED
 }
 
+// AI提案（assignStopsToTrucks）が未割当の停車地をトラックへ振り分ける際の方式。
+// SWEEP: 本社から見た方位角順に処理し、容量が許す限り同じトラックへ積み続ける（方面重視）。
+// SWEEP_BALANCED: SWEEPと同じ処理順だが、今のトラックに積めなくなった際の切り替え先を
+//   積載率が最も低いトラックにする（方面はある程度保ちつつ、偏りも抑える。デフォルト推奨）
+enum AssignmentStrategy {
+  SWEEP
+  SWEEP_BALANCED
+}
+
+// システム全体の基本設定（単一行のみ保持するシングルトン）
+model SystemSetting {
+  id                         String   @id @default("default")
+  defaultDepartureTime       String   @default("08:00") // HH:mm
+  lunchBreakStart            String   @default("12:00") // HH:mm
+  lunchBreakEnd              String   @default("13:00") // HH:mm
+  // 時間超過判定（配送先が多すぎて定時までに回りきれないかのチェック）で使う「定時」。HH:mm
+  deliveryEndTime            String   @default("17:00")
+  defaultStopDurationMinutes Int      @default(10)
+  truckScheduleHorizonDays   Int      @default(10) // 配車計画の先行登録可能日数。トラック稼働登録画面・配送計画の作成画面の両方で、本日から何日先まで登録・編集できるかを共通で制御する（1〜30）
+  excludeWeekendsAndHolidays Boolean  @default(false) // trueなら土日・祝日を配送除外日とし、トラック稼働登録できなくする
+  // 実際にトラックへ積むと生じるデッドスペース（隙間）を踏まえた積載利用率（%、10〜100）。
+  // /poolの容積超過チェックで、トラック容量合計に (loadUtilizationPercent/100) を掛けた
+  // 実効容量と比較する。100ならキチキチ（容量そのまま）、値を下げるほど余裕を持たせた判定になる
+  loadUtilizationPercent     Int      @default(100)
+  // 複数便対応：1日あたりトラック1台が本社と何往復できるかの想定値。/poolの容積超過チェックで、
+  // トラック容量合計にこの値を掛けたものをその日の実効容量とする（1台＝1回の積み込みで1日分を
+  // 配りきる前提ではなくなったため、単純な「容量合計」だけではもう物理的な上限にならない）
+  assumedTripsPerDay         Int      @default(2)
+  // 稼働中ルートに配送先を新規追加する際、ドライバーが本社に戻ってから追加の荷物を積み込むまでの
+  // 所要時間（分）。到着予定時刻の再計算（本社経由の移動時間＋この時間）に使う
+  reloadDurationMinutes      Int      @default(30)
+  // AI提案（/suggest・/assign-suggested）が停車地をトラックへ振り分ける際の方式
+  assignmentStrategy         AssignmentStrategy @default(SWEEP_BALANCED)
+  // 本社（車庫）の名称・住所・座標。ルート計算の出発・帰着地点として全体で共通利用する。
+  // 座標は本部住所を国土地理院APIでジオコーディングした値（/api/settings PATCH時に自動更新）。
+  // 初期値は旧・固定定数TOCHIGI_DEPOTと同じ座標（栃木県内の概算値。住所は未設定のまま運用開始）
+  depotName                  String   @default("本社")
+  depotAddress               String   @default("")
+  depotLat                   Float    @default(36.5657)
+  depotLng                   Float    @default(139.8836)
+  updatedAt                  DateTime @updatedAt
+}
+
 model TrackingLog {
-  id        String    @id @default(cuid())
-  route     PlanRoute @relation(fields: [routeId], references: [id])
+  id        String     @id @default(cuid())
+  route     PlanRoute  @relation(fields: [routeId], references: [id])
   routeId   String
+  // どの便（RouteTrip）の記録か。便を使わないルート・旧データはnullのまま
+  trip      RouteTrip? @relation(fields: [tripId], references: [id])
+  tripId    String?
   lat       Float
   lng       Float
-  timestamp DateTime  @default(now())
+  timestamp DateTime   @default(now())
+}
+
+model FuelLog {
+  id        String     @id @default(cuid())
+  route     PlanRoute  @relation(fields: [routeId], references: [id])
+  routeId   String
+  // どの便（RouteTrip）の記録か。便を使わないルート・旧データはnullのまま
+  trip      RouteTrip? @relation(fields: [tripId], references: [id])
+  tripId    String?
+  timestamp DateTime   @default(now())
 }

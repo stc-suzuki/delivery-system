@@ -2,7 +2,10 @@
 
 import { useEffect, useState } from 'react';
 import dynamic from 'next/dynamic';
+import { Building2 } from 'lucide-react';
+import PageHeader from '@/components/ui/PageHeader';
 import type { RouteForMap } from '@/components/map/DeliveryMap';
+import { useDialog } from '@/components/ui/DialogProvider';
 
 const DeliveryMap = dynamic(() => import('@/components/map/DeliveryMap'), { ssr: false });
 
@@ -20,6 +23,7 @@ type Location = {
 type BulkResult = { success: number; failed: number; errors: string[] };
 
 export default function LocationsPage() {
+  const { confirmDialog, warnDialog } = useDialog();
   const [locations, setLocations] = useState<Location[]>([]);
   const [search, setSearch] = useState('');
   const [name, setName] = useState('');
@@ -33,6 +37,8 @@ export default function LocationsPage() {
   const [csvFile, setCsvFile] = useState<File | null>(null);
   const [uploading, setUploading] = useState(false);
   const [bulkResult, setBulkResult] = useState<BulkResult | null>(null);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [editingId, setEditingId] = useState<string | null>(null);
 
   async function fetchLocations(q?: string) {
     const url = q ? `/api/locations?q=${encodeURIComponent(q)}` : '/api/locations';
@@ -75,23 +81,39 @@ export default function LocationsPage() {
     setSaving(true);
     setError('');
     try {
-      const res = await fetch('/api/locations', {
-        method: 'POST',
+      const url = editingId ? `/api/locations/${editingId}` : '/api/locations';
+      const method = editingId ? 'PATCH' : 'POST';
+      const res = await fetch(url, {
+        method,
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ name, address, phone }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error);
-      setName('');
-      setAddress('');
-      setPhone('');
-      setPreview(null);
-      fetchLocations();
+      resetForm();
+      fetchLocations(search);
     } catch (err) {
-      setError(err instanceof Error ? err.message : '登録に失敗しました');
+      setError(err instanceof Error ? err.message : editingId ? '更新に失敗しました' : '登録に失敗しました');
     } finally {
       setSaving(false);
     }
+  }
+
+  function startEdit(loc: Location) {
+    setEditingId(loc.id);
+    setName(loc.name);
+    setAddress(loc.address);
+    setPhone(loc.phone ?? '');
+    setPreview(null);
+    setError('');
+  }
+
+  function resetForm() {
+    setEditingId(null);
+    setName('');
+    setAddress('');
+    setPhone('');
+    setPreview(null);
   }
 
   async function handleBulkUpload() {
@@ -113,18 +135,39 @@ export default function LocationsPage() {
     }
   }
 
+  async function handleDelete(loc: Location) {
+    if (!(await confirmDialog(`「${loc.name}」を削除しますか？この操作は取り消せません。`, { variant: 'danger' }))) return;
+    setDeletingId(loc.id);
+    try {
+      const res = await fetch(`/api/locations/${loc.id}`, { method: 'DELETE' });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error);
+      if (editingId === loc.id) resetForm();
+      fetchLocations(search);
+    } catch (err) {
+      await warnDialog(err instanceof Error ? err.message : '削除に失敗しました', { title: '削除できませんでした' });
+    } finally {
+      setDeletingId(null);
+    }
+  }
+
   const previewRoutes: RouteForMap[] = preview
     ? [{ id: 'preview', color: '#2563eb', stops: [{ lat: preview.lat, lng: preview.lng, order: 0, name }] }]
     : [];
 
   return (
     <div className="space-y-6">
-      <h1 className="text-xl font-bold text-gray-800">配送先管理</h1>
+      <PageHeader
+        icon={Building2}
+        title="配送先管理"
+        description="配送先の登録・住所・位置情報を管理します。"
+        tint="gray"
+      />
 
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
         {/* 新規登録フォーム */}
-        <div className="rounded-lg border border-gray-200 bg-white p-4 shadow-sm">
-          <h2 className="mb-3 text-sm font-semibold text-gray-700">新規登録</h2>
+        <div className="rounded-lg border border-[#E5EAF2] bg-[#F2F5F9] p-4 shadow-sm">
+          <h2 className="mb-3 text-sm font-semibold text-gray-700">{editingId ? '配送先編集' : '新規登録'}</h2>
           {error && <p className="mb-2 rounded bg-red-50 p-2 text-sm text-red-600">{error}</p>}
           <form onSubmit={handleSubmit} className="space-y-3">
             <div>
@@ -164,26 +207,37 @@ export default function LocationsPage() {
               />
             </div>
             {preview && (
-              <p className="text-xs text-gray-500">確認結果: {preview.formattedAddress}</p>
+              <p className="text-xs text-[#4B5563]">確認結果: {preview.formattedAddress}</p>
             )}
-            <button
-              type="submit"
-              disabled={saving}
-              className="w-full rounded bg-blue-600 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50"
-            >
-              {saving ? '登録中...' : '登録'}
-            </button>
+            <div className="flex gap-2">
+              <button
+                type="submit"
+                disabled={saving}
+                className="flex-1 rounded bg-blue-600 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50"
+              >
+                {saving ? '保存中...' : editingId ? '更新' : '登録'}
+              </button>
+              {editingId && (
+                <button
+                  type="button"
+                  onClick={resetForm}
+                  className="rounded bg-gray-100 px-4 py-2 text-sm text-gray-700 hover:bg-gray-200"
+                >
+                  キャンセル
+                </button>
+              )}
+            </div>
           </form>
         </div>
 
         {/* 地図プレビュー */}
-        <div className="h-80 rounded-lg border border-gray-200 bg-white p-2 shadow-sm lg:h-auto">
+        <div className="h-80 rounded-lg border border-[#E5EAF2] bg-[#F2F5F9] p-2 shadow-sm lg:h-auto">
           <DeliveryMap routes={previewRoutes} />
         </div>
       </div>
 
       {/* CSV一括登録 */}
-      <div className="rounded-lg border border-gray-200 bg-white p-4 shadow-sm">
+      <div className="rounded-lg border border-[#E5EAF2] bg-[#F2F5F9] p-4 shadow-sm">
         <h2 className="mb-3 text-sm font-semibold text-gray-700">CSV一括登録（name,address,phone）</h2>
         <div className="flex items-center gap-3">
           <input
@@ -228,7 +282,7 @@ export default function LocationsPage() {
       </form>
 
       {/* 一覧テーブル */}
-      <div className="overflow-x-auto rounded-lg border border-gray-200 bg-white shadow-sm">
+      <div className="overflow-x-auto rounded-lg border border-[#E5EAF2] bg-[#F2F5F9] shadow-sm">
         <table className="min-w-full divide-y divide-gray-200 text-sm">
           <thead className="bg-gray-50">
             <tr>
@@ -236,6 +290,7 @@ export default function LocationsPage() {
               <th className="px-4 py-2 text-left font-medium text-gray-500">住所</th>
               <th className="px-4 py-2 text-left font-medium text-gray-500">電話番号</th>
               <th className="px-4 py-2 text-left font-medium text-gray-500">登録日</th>
+              <th className="px-4 py-2 text-left font-medium text-gray-500">操作</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-gray-100">
@@ -245,6 +300,18 @@ export default function LocationsPage() {
                 <td className="px-4 py-2">{loc.formattedAddress ?? loc.address}</td>
                 <td className="px-4 py-2">{loc.phone ?? '-'}</td>
                 <td className="px-4 py-2">{new Date(loc.createdAt).toLocaleDateString('ja-JP')}</td>
+                <td className="flex gap-3 px-4 py-2">
+                  <button onClick={() => startEdit(loc)} className="text-xs text-blue-600 hover:underline">
+                    編集
+                  </button>
+                  <button
+                    onClick={() => handleDelete(loc)}
+                    disabled={deletingId === loc.id}
+                    className="text-xs text-red-500 hover:underline disabled:opacity-50"
+                  >
+                    {deletingId === loc.id ? '削除中...' : '削除'}
+                  </button>
+                </td>
               </tr>
             ))}
           </tbody>

@@ -3,7 +3,7 @@ import "./globals.css";
 import Providers from "./providers";
 
 export const metadata: Metadata = {
-  title: "配送管理システム",
+  title: "配送管理システム Ver0.9",
   description: "栃木県内配送業務管理システム",
 };
 

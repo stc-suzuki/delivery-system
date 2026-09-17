@@ -6,7 +6,7 @@ import { useRouter } from 'next/navigation';
 
 export default function LoginPage() {
   const router = useRouter();
-  const [email, setEmail] = useState('');
+  const [name, setName] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
@@ -16,13 +16,13 @@ export default function LoginPage() {
     setLoading(true);
     setError('');
     const res = await signIn('credentials', {
-      email,
+      name,
       password,
       redirect: false,
     });
     setLoading(false);
     if (res?.error) {
-      setError('メールアドレスまたはパスワードが正しくありません');
+      setError('名前またはパスワードが正しくありません');
       return;
     }
     router.push('/dashboard');
@@ -33,19 +33,19 @@ export default function LoginPage() {
     <div className="flex min-h-screen items-center justify-center bg-gray-50">
       <form
         onSubmit={handleSubmit}
-        className="w-full max-w-sm space-y-4 rounded-lg bg-white p-8 shadow"
+        className="w-full max-w-sm space-y-4 overflow-hidden rounded-lg bg-white p-8 pt-0 shadow"
       >
-        <h1 className="text-xl font-bold text-center">配送管理システム</h1>
+        <h1 className="-mx-8 mb-4 bg-blue-900 px-8 py-4 text-xl font-bold text-center text-white">配送管理システム Ver0.9</h1>
         {error && (
           <p className="rounded bg-red-50 p-2 text-sm text-red-600">{error}</p>
         )}
         <div>
-          <label className="block text-sm font-medium text-gray-700">メールアドレス</label>
+          <label className="block text-sm font-medium text-gray-700">名前</label>
           <input
-            type="email"
+            type="text"
             required
-            value={email}
-            onChange={e => setEmail(e.target.value)}
+            value={name}
+            onChange={e => setName(e.target.value)}
             className="mt-1 w-full rounded border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
           />
         </div>

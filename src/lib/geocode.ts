@@ -1,8 +1,12 @@
+// 国土地理院（GSI）の住所検索APIを使用。APIキー・請求先登録が不要な無料サービス
 export async function geocodeAddress(address: string) {
-  const url = `https://maps.googleapis.com/maps/api/geocode/json?address=${encodeURIComponent(address)}&key=${process.env.GOOGLE_MAPS_API_KEY}&language=ja&region=JP`;
+  const url = `https://msearch.gsi.go.jp/address-search/AddressSearch?q=${encodeURIComponent(address)}`;
   const res = await fetch(url);
   const data = await res.json();
-  if (data.status !== 'OK') throw new Error(`ジオコーディング失敗: ${data.status}`);
-  const { lat, lng } = data.results[0].geometry.location;
-  return { lat, lng, formattedAddress: data.results[0].formatted_address as string };
+  if (!Array.isArray(data) || data.length === 0) {
+    throw new Error('ジオコーディング失敗: 該当する住所が見つかりませんでした');
+  }
+  const [lng, lat] = data[0].geometry.coordinates;
+  const formattedAddress = data[0].properties.title as string;
+  return { lat, lng, formattedAddress };
 }
