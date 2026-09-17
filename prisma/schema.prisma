@@ -115,6 +115,7 @@ model PlanRoute {
   createdAt     DateTime       @default(now())
   stops         DeliveryStop[]
   trackingLogs  TrackingLog[]
+  fuelLogs      FuelLog[]
 }
 
 enum RouteStatus {
@@ -132,6 +133,7 @@ model DeliveryStop {
   stopOrder     Int
   scheduledTime DateTime?
   isTimeFixed   Boolean      @default(false)
+  cargoRatio    Int          @default(100) // 荷量割合（%、10単位）
   arrivedAt     DateTime?
   status        StopStatus   @default(PENDING)
   note          String?
@@ -160,5 +162,12 @@ model TrackingLog {
   routeId   String
   lat       Float
   lng       Float
+  timestamp DateTime  @default(now())
+}
+
+model FuelLog {
+  id        String    @id @default(cuid())
+  route     PlanRoute @relation(fields: [routeId], references: [id])
+  routeId   String
   timestamp DateTime  @default(now())
 }

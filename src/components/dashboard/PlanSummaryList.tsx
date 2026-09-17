@@ -1,10 +1,17 @@
 'use client';
 
+import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { format } from 'date-fns';
 import PlanStatusBadge from '@/components/plans/PlanStatusBadge';
 import { splitPlateNo } from '@/components/plans/DispatchGanttChart';
+import FuelIcon from '@/components/icons/FuelIcon';
 import { PlanStatus } from '@prisma/client';
+import {
+  RouteOperationStatus,
+  ROUTE_OPERATION_STATUS_LABELS as ROUTE_STATUS_LABELS,
+  ROUTE_OPERATION_STATUS_STYLES as ROUTE_STATUS_STYLES,
+} from '@/lib/routeOperationStatus';
 
 type Destination = {
   id: string;
@@ -23,10 +30,11 @@ type PlanSummary = {
   drivers: string[];
   trucks: string[];
   routeStatuses: RouteOperationStatus[];
+  hasFuelLog: boolean;
+  earliestDepartureTime: string | null;
+  attentionScore: number;
   destinations: Destination[];
 };
-
-type RouteOperationStatus = 'BEFORE_START' | 'STARTED' | 'IN_OPERATION' | 'COMPLETED';
 
 const DESTINATION_STYLES: Record<Destination['status'], string> = {
   PENDING: 'bg-gray-100 text-gray-600',
@@ -40,49 +48,101 @@ const DESTINATION_LABELS: Record<Destination['status'], string> = {
   SKIPPED: 'スキップ',
 };
 
-const ROUTE_STATUS_STYLES: Record<RouteOperationStatus, string> = {
-  BEFORE_START: 'bg-gray-100 text-gray-600',
-  STARTED: 'bg-orange-100 text-orange-700',
-  IN_OPERATION: 'bg-yellow-100 text-yellow-800',
-  COMPLETED: 'bg-green-100 text-green-700',
+type SortKey = 'departure' | 'status' | 'truck' | 'driver' | 'stopCount' | 'attention';
+
+const SORT_LABELS: Record<SortKey, string> = {
+  departure: '出発時刻順',
+  status: '配送状況順',
+  truck: 'ナンバー下4桁順',
+  driver: 'ドライバー名前順',
+  stopCount: '停車件数順',
+  attention: '要注意順',
 };
 
-const ROUTE_STATUS_LABELS: Record<RouteOperationStatus, string> = {
-  BEFORE_START: '稼働前',
-  STARTED: '運送開始',
-  IN_OPERATION: '稼働中',
-  COMPLETED: '運送完了',
+const OPERATION_RANK: Record<RouteOperationStatus, number> = {
+  BEFORE_START: 0,
+  STARTED: 1,
+  IN_OPERATION: 2,
+  COMPLETED: 3,
 };
+
+const driverNameCollator = new Intl.Collator('ja');
+
+function sortPlans(plans: PlanSummary[], sortKey: SortKey): PlanSummary[] {
+  return [...plans].sort((a, b) => {
+    switch (sortKey) {
+      case 'status': {
+        const aRank = Math.min(...a.routeStatuses.map(s => OPERATION_RANK[s]), 3);
+        const bRank = Math.min(...b.routeStatuses.map(s => OPERATION_RANK[s]), 3);
+        return aRank - bRank;
+      }
+      case 'truck':
+        return splitPlateNo(a.trucks[0] ?? '').lastFour.localeCompare(splitPlateNo(b.trucks[0] ?? '').lastFour);
+      case 'driver':
+        return driverNameCollator.compare(a.drivers[0] ?? '', b.drivers[0] ?? '');
+      case 'stopCount':
+        return b.stopCount - a.stopCount;
+      case 'attention':
+        return b.attentionScore - a.attentionScore;
+      case 'departure':
+      default: {
+        const at = a.earliestDepartureTime ? new Date(a.earliestDepartureTime).getTime() : Infinity;
+        const bt = b.earliestDepartureTime ? new Date(b.earliestDepartureTime).getTime() : Infinity;
+        return at - bt;
+      }
+    }
+  });
+}
 
 export default function PlanSummaryList({ plans }: { plans: PlanSummary[] }) {
   const router = useRouter();
+  const [sortKey, setSortKey] = useState<SortKey>('departure');
+  const sortedPlans = sortPlans(plans, sortKey);
 
   return (
     <div className="space-y-3">
-      <h2 className="text-base font-semibold text-gray-800">本日の配送計画</h2>
+      <div className="flex items-center gap-3">
+        <h2 className="text-base font-semibold text-gray-800">本日の配送計画</h2>
+        <select
+          value={sortKey}
+          onChange={e => setSortKey(e.target.value as SortKey)}
+          className="rounded border border-gray-300 px-2 py-1 text-sm"
+        >
+          {(Object.keys(SORT_LABELS) as SortKey[]).map(key => (
+            <option key={key} value={key}>
+              {SORT_LABELS[key]}
+            </option>
+          ))}
+        </select>
+      </div>
       {plans.length === 0 && (
         <p className="text-sm text-gray-500">本日の配送計画はありません</p>
       )}
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-        {plans.map(plan => {
+        {sortedPlans.map(plan => {
           const progress = plan.stopCount === 0 ? 0 : Math.round((plan.completedStopCount / plan.stopCount) * 100);
           const isCompleted = plan.status === 'COMPLETED';
+          const isDraft = plan.status === 'DRAFT';
+          const cardStyle = isCompleted
+            ? 'border-green-200 border-l-4 border-l-green-500 bg-green-50'
+            : isDraft
+            ? 'border-gray-300 border-l-4 border-l-gray-400 bg-gray-100'
+            : 'border-gray-200 bg-white';
           return (
             <div
               key={plan.id}
-              className={
-                isCompleted
-                  ? 'rounded-lg border border-green-200 border-l-4 border-l-green-500 bg-green-50 p-4 shadow-sm hover:shadow'
-                  : 'rounded-lg border border-gray-200 bg-white p-4 shadow-sm hover:shadow'
-              }
+              className={`rounded-lg border p-4 shadow-sm hover:shadow ${cardStyle}`}
             >
               <button
                 onClick={() => router.push(`/plans/${plan.id}`)}
                 className="w-full text-left"
               >
                 <div className="mb-2 flex items-center justify-between">
-                  <span className="text-sm font-semibold">{format(new Date(plan.planDate), 'yyyy/MM/dd')}</span>
-                  <PlanStatusBadge status={plan.status} />
+                  <span className="flex items-center gap-2">
+                    <span className="text-sm font-semibold">{format(new Date(plan.planDate), 'yyyy/MM/dd')}</span>
+                    {plan.hasFuelLog && <FuelIcon className="h-4 w-4 text-teal-600" />}
+                  </span>
+                  {plan.status !== 'COMPLETED' && <PlanStatusBadge status={plan.status} />}
                 </div>
                 <p className="text-sm text-gray-600">
                   停車地: {plan.completedStopCount} / {plan.stopCount} 完了
@@ -110,7 +170,7 @@ export default function PlanSummaryList({ plans }: { plans: PlanSummary[] }) {
                               </span>
                             )}
                           </span>
-                          {routeStatus && (
+                          {routeStatus && plan.status !== 'DRAFT' && (
                             <span className={`shrink-0 rounded-full px-2 py-0.5 text-xs font-medium ${ROUTE_STATUS_STYLES[routeStatus]}`}>
                               {ROUTE_STATUS_LABELS[routeStatus]}
                             </span>

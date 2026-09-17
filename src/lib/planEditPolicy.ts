@@ -2,7 +2,7 @@ import { DeliveryPlan, PlanStatus } from '@prisma/client';
 import { differenceInDays, startOfDay } from 'date-fns';
 
 export function canEditPlan(plan: DeliveryPlan): boolean {
-  if (plan.status === PlanStatus.IN_PROGRESS || plan.status === PlanStatus.COMPLETED) {
+  if (plan.status === PlanStatus.COMPLETED) {
     return false;
   }
   const today = startOfDay(new Date());

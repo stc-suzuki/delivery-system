@@ -14,6 +14,7 @@ export type RouteStop = {
   stopOrder: number;
   scheduledTime: string | null;
   isTimeFixed: boolean;
+  cargoRatio: number;
 };
 
 export type RouteData = {

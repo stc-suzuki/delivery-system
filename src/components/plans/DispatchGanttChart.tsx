@@ -2,7 +2,12 @@
 
 import { format } from 'date-fns';
 import PlanStatusBadge from './PlanStatusBadge';
-import type { PlanStatus } from '@prisma/client';
+import type { PlanStatus, RouteStatus } from '@prisma/client';
+import {
+  computeRouteOperationStatus,
+  ROUTE_OPERATION_STATUS_LABELS,
+  ROUTE_OPERATION_STATUS_STYLES,
+} from '@/lib/routeOperationStatus';
 
 const START_HOUR = 8;
 const END_HOUR = 17;
@@ -25,6 +30,7 @@ export type GanttRoute = {
   stops: GanttStop[];
   planId?: string;
   planStatus?: PlanStatus;
+  routeStatus?: RouteStatus;
 };
 
 function minutesFromStart(time: string): number {
@@ -93,12 +99,20 @@ export default function DispatchGanttChart({ routes, onRouteClick }: Props) {
           const { prefix, lastFour } = splitPlateNo(route.truckPlateNo);
           const completedCount = route.stops.filter(s => s.status === 'COMPLETED').length;
           const isCompleted = route.planStatus === 'COMPLETED';
+          const isDraft = route.planStatus === 'DRAFT';
+          const operationStatus = route.routeStatus && !isDraft
+            ? computeRouteOperationStatus(route.routeStatus, route.stops.some(s => s.status === 'COMPLETED'))
+            : undefined;
 
           return (
             <div
               key={route.id}
               className={`flex border-b border-gray-100 last:border-b-0 ${
-                isCompleted ? 'border-l-4 border-l-green-500 bg-green-50' : ''
+                isCompleted
+                  ? 'border-l-4 border-l-green-500 bg-green-50'
+                  : isDraft
+                  ? 'border-l-4 border-l-gray-400 bg-gray-100'
+                  : ''
               }`}
             >
               <div
@@ -114,8 +128,15 @@ export default function DispatchGanttChart({ routes, onRouteClick }: Props) {
                     {lastFour && <span className="ml-1 text-base font-semibold text-gray-800">{lastFour}</span>}
                   </div>
                   <div className="truncate text-xs font-semibold text-gray-700">{route.driverName}</div>
-                  <div className="mt-0.5 flex items-center gap-1">
-                    {route.planStatus && <PlanStatusBadge status={route.planStatus} />}
+                  <div className="mt-0.5 flex flex-wrap items-center gap-1">
+                    {route.planStatus && route.planStatus !== 'COMPLETED' && <PlanStatusBadge status={route.planStatus} />}
+                    {operationStatus && (
+                      <span
+                        className={`shrink-0 rounded-full px-2 py-0.5 text-xs font-medium ${ROUTE_OPERATION_STATUS_STYLES[operationStatus]}`}
+                      >
+                        {ROUTE_OPERATION_STATUS_LABELS[operationStatus]}
+                      </span>
+                    )}
                     <span className="whitespace-nowrap text-xs font-semibold text-gray-500">
                       {completedCount}/{route.stops.length}件
                     </span>

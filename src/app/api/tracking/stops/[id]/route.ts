@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { Prisma } from '@prisma/client';
 import { prisma } from '@/lib/prisma';
 import { getIO } from '@/lib/socket';
 
@@ -24,6 +25,15 @@ export async function PATCH(
     });
 
     const route = stop.route;
+
+    // 運送開始ボタンの押し忘れ対策: 未開始のまま最初の完了操作が行われたらルートを進行中にする
+    if (status === 'COMPLETED' && route.status === 'PENDING') {
+      await prisma.planRoute.update({
+        where: { id: route.id },
+        data: { status: 'IN_PROGRESS' },
+      });
+    }
+
     const allStopsResolved =
       route.stops.length > 0 &&
       route.stops.every(s => s.status === 'COMPLETED' || s.status === 'SKIPPED');
@@ -51,6 +61,9 @@ export async function PATCH(
 
     return NextResponse.json(stop);
   } catch (error) {
+    if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2025') {
+      return NextResponse.json({ error: '対象の停車地が見つかりません（配送計画が削除された可能性があります）' }, { status: 404 });
+    }
     console.error(error);
     return NextResponse.json({ error: '停車地の更新に失敗しました' }, { status: 500 });
   }

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { startOfDay, endOfDay, subDays, startOfDay as sod } from 'date-fns';
+import { computeRouteOperationStatus } from '@/lib/routeOperationStatus';
 
 export const dynamic = 'force-dynamic';
 
@@ -10,13 +11,17 @@ export async function GET(request: NextRequest) {
     const today = dateParam ? startOfDay(new Date(dateParam)) : startOfDay(new Date());
 
     const todayPlans = await prisma.deliveryPlan.findMany({
-      where: { planDate: { gte: today, lte: endOfDay(today) } },
+      where: {
+        planDate: { gte: today, lte: endOfDay(today) },
+        routes: { some: {} },
+      },
       include: {
         routes: {
           include: {
             truck: true,
             driver: true,
             stops: { include: { location: true }, orderBy: { stopOrder: 'asc' } },
+            fuelLogs: true,
           },
         },
       },
@@ -30,16 +35,26 @@ export async function GET(request: NextRequest) {
         p.routes.flatMap(r => r.stops).some(s => s.status === 'COMPLETED')
     ).length;
 
-    const routeOperationStatus = (route: (typeof todayPlans)[number]['routes'][number]): 'BEFORE_START' | 'STARTED' | 'IN_OPERATION' | 'COMPLETED' => {
-      if (route.status === 'COMPLETED') return 'COMPLETED';
-      const hasCompletedStop = route.stops.some(s => s.status === 'COMPLETED');
-      if (route.status === 'IN_PROGRESS') return hasCompletedStop ? 'IN_OPERATION' : 'STARTED';
-      return 'BEFORE_START';
+    const now = new Date();
+
+    const routeOperationStatus = (route: (typeof todayPlans)[number]['routes'][number]) =>
+      computeRouteOperationStatus(route.status, route.stops.some(s => s.status === 'COMPLETED'));
+
+    const routeAttentionScore = (route: (typeof todayPlans)[number]['routes'][number]) => {
+      let score = 0;
+      if (routeOperationStatus(route) === 'BEFORE_START' && route.departureTime && route.departureTime < now) {
+        score += 2;
+      }
+      score += route.stops.filter(
+        s => s.isTimeFixed && s.status === 'PENDING' && s.scheduledTime && s.scheduledTime < now
+      ).length;
+      return score;
     };
 
     const planSummaries = todayPlans.map(p => {
       const stops = p.routes.flatMap(r => r.stops);
       const completedStops = stops.filter(s => s.status === 'COMPLETED').length;
+      const departureTimes = p.routes.map(r => r.departureTime).filter((d): d is Date => d !== null);
       return {
         id: p.id,
         planDate: p.planDate,
@@ -51,6 +66,12 @@ export async function GET(request: NextRequest) {
         drivers: p.routes.map(r => r.driver.name),
         trucks: p.routes.map(r => r.truck.plateNo),
         routeStatuses: p.routes.map(routeOperationStatus),
+        hasFuelLog: p.routes.some(r => r.fuelLogs.length > 0),
+        earliestDepartureTime:
+          departureTimes.length > 0
+            ? new Date(Math.min(...departureTimes.map(d => d.getTime())))
+            : null,
+        attentionScore: p.routes.reduce((sum, r) => sum + routeAttentionScore(r), 0),
         destinations: stops.map(s => ({
           id: s.id,
           name: s.location.name,

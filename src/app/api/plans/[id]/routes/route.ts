@@ -23,7 +23,7 @@ export async function PATCH(
       routes: {
         id: string;
         departureTime?: string | null;
-        stops: { id: string; locationId?: string; stopOrder: number; scheduledTime?: string | null }[];
+        stops: { id: string; locationId?: string; stopOrder: number; scheduledTime?: string | null; cargoRatio?: number }[];
       }[];
     };
 
@@ -64,6 +64,7 @@ export async function PATCH(
                     isTimeFixed: !!stop.scheduledTime,
                   }
                 : {}),
+              ...(stop.cargoRatio !== undefined ? { cargoRatio: stop.cargoRatio } : {}),
             },
           });
         }

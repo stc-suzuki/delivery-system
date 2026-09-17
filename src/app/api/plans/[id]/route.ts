@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { format } from 'date-fns';
 import { prisma } from '@/lib/prisma';
 import { canEditPlan } from '@/lib/planEditPolicy';
 
@@ -65,16 +66,32 @@ export async function PATCH(
 }
 
 export async function DELETE(
-  _req: NextRequest,
+  req: NextRequest,
   { params }: { params: { id: string } }
 ) {
   try {
-    const plan = await prisma.deliveryPlan.findUnique({ where: { id: params.id } });
+    const plan = await prisma.deliveryPlan.findUnique({
+      where: { id: params.id },
+      include: { routes: true },
+    });
     if (!plan) {
       return NextResponse.json({ error: '配送計画が見つかりません' }, { status: 404 });
     }
-    if (plan.status !== 'DRAFT') {
-      return NextResponse.json({ error: 'DRAFT状態の計画のみ削除できます' }, { status: 403 });
+
+    const hasStartedRoute = plan.routes.some(r => r.status !== 'PENDING');
+    if (hasStartedRoute) {
+      const body = await req.json().catch(() => ({}));
+      const expected = format(new Date(plan.planDate), 'yyyy-MM-dd');
+      if (body.confirmPlanDate !== expected) {
+        return NextResponse.json(
+          {
+            error: '運送が開始されているルートが含まれています。確認のため計画日の入力が必要です',
+            requiresConfirmation: true,
+            planDate: expected,
+          },
+          { status: 409 }
+        );
+      }
     }
 
     await prisma.$transaction(async tx => {

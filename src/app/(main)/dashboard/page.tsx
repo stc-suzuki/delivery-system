@@ -23,6 +23,9 @@ type PlanSummary = {
   drivers: string[];
   trucks: string[];
   routeStatuses: ('BEFORE_START' | 'STARTED' | 'IN_OPERATION' | 'COMPLETED')[];
+  hasFuelLog: boolean;
+  earliestDepartureTime: string | null;
+  attentionScore: number;
   destinations: Destination[];
 };
 

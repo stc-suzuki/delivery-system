@@ -15,7 +15,7 @@ const STATUS_STYLES: Record<DriverRow['status'], string> = {
 };
 
 const STATUS_LABELS: Record<DriverRow['status'], string> = {
-  IN_PROGRESS: '稼働中',
+  IN_PROGRESS: '進行中',
   IDLE: '待機中',
   COMPLETED: '配達完了',
 };
@@ -27,6 +27,12 @@ const TYPE_LABELS: Record<DriverRow['type'], string> = {
 };
 
 const STATUS_ORDER: DriverRow['status'][] = ['IN_PROGRESS', 'COMPLETED', 'IDLE'];
+
+function formatTruckNumber(plateNo: string | null): string {
+  if (!plateNo) return '-';
+  const match = plateNo.match(/(\d{4})(?!.*\d)/);
+  return match ? match[1] : plateNo;
+}
 
 function StatusGroupTable({ status, group }: { status: DriverRow['status']; group: DriverRow[] }) {
   return (
@@ -40,7 +46,7 @@ function StatusGroupTable({ status, group }: { status: DriverRow['status']; grou
       {group.length === 0 ? (
         <p className="py-3 text-center text-sm text-gray-500">対象のドライバーはいません</p>
       ) : (
-        <div className="max-h-96 overflow-y-auto">
+        <div className="max-h-[18rem] overflow-y-auto">
           <table className="w-full table-fixed text-left text-sm">
             <thead>
               <tr className="border-b border-gray-200 text-xs text-gray-500">
@@ -52,9 +58,18 @@ function StatusGroupTable({ status, group }: { status: DriverRow['status']; grou
             <tbody>
               {group.map(driver => (
                 <tr key={driver.id} className="border-b border-gray-100 last:border-0">
-                  <td className="truncate py-1.5 pr-2 font-medium text-gray-800">{driver.name}</td>
+                  <td className="py-1.5 pr-2 font-medium text-gray-800">
+                    <div className="flex items-center gap-1.5">
+                      <span className="truncate">{driver.name}</span>
+                      {status === 'IDLE' && driver.truck && (
+                        <span className="shrink-0 rounded-full bg-purple-100 px-1.5 py-0.5 text-[10px] font-medium text-purple-700">
+                          稼働前
+                        </span>
+                      )}
+                    </div>
+                  </td>
                   <td className="py-1.5 pr-2 text-gray-600">{TYPE_LABELS[driver.type]}</td>
-                  <td className="truncate py-1.5 pr-2 text-gray-600">{driver.truck ?? '-'}</td>
+                  <td className="truncate py-1.5 pr-2 text-gray-600">{formatTruckNumber(driver.truck)}</td>
                 </tr>
               ))}
             </tbody>
@@ -76,7 +91,13 @@ export default function DriverStatusTable({ drivers }: { drivers: DriverRow[] })
       ) : (
         <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
           {STATUS_ORDER.map(status => (
-            <StatusGroupTable key={status} status={status} group={drivers.filter(d => d.status === status)} />
+            <StatusGroupTable
+              key={status}
+              status={status}
+              group={drivers
+                .filter(d => d.status === status)
+                .sort((a, b) => (a.truck ? 0 : 1) - (b.truck ? 0 : 1))}
+            />
           ))}
         </div>
       )}

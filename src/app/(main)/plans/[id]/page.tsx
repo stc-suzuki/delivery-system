@@ -9,7 +9,7 @@ import type { RouteData } from '@/components/plans/RouteCard';
 import DispatchGanttChart, { GanttRoute } from '@/components/plans/DispatchGanttChart';
 import { getEditWarning } from '@/lib/planEditPolicy';
 import { DRIVER_TYPE_LABELS } from '@/lib/driverSchedule';
-import type { DeliveryPlan, DriverType } from '@prisma/client';
+import type { DeliveryPlan, DriverType, RouteStatus } from '@prisma/client';
 
 const DeliveryMap = dynamic(() => import('@/components/map/DeliveryMap'), { ssr: false });
 
@@ -18,6 +18,13 @@ const ROUTE_COLORS = [
   '#0891b2', '#db2777', '#65a30d', '#ea580c', '#4f46e5',
   '#0d9488', '#c026d3', '#ca8a04', '#059669', '#be123c',
 ];
+
+const CARGO_RATIO_STEP = 10;
+
+function roundToCargoStep(value: number): number {
+  const rounded = Math.round(value / CARGO_RATIO_STEP) * CARGO_RATIO_STEP;
+  return Math.min(100, Math.max(CARGO_RATIO_STEP, rounded));
+}
 
 type Location = { id: string; name: string; address: string; lat: number; lng: number };
 type Truck = { id: string; plateNo: string; status: string };
@@ -30,6 +37,7 @@ type ApiStop = {
   status: string;
   scheduledTime: string | null;
   isTimeFixed: boolean;
+  cargoRatio: number;
   location: Location;
 };
 type ApiRoute = {
@@ -37,6 +45,7 @@ type ApiRoute = {
   truckId: string;
   driverId: string;
   departureTime: string | null;
+  status: RouteStatus;
   truck: Truck;
   driver: Driver;
   stops: ApiStop[];
@@ -62,16 +71,13 @@ export default function PlanDetailPage() {
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
 
-  // 稼働中の計画への配送先追加
-  const [addStopRouteId, setAddStopRouteId] = useState('');
-  const [addStopLocationIds, setAddStopLocationIds] = useState<Set<string>>(new Set());
-  const [addStopSearch, setAddStopSearch] = useState('');
-
   // Step1
   const [planDate, setPlanDate] = useState('');
   const [selectedLocationIds, setSelectedLocationIds] = useState<Set<string>>(new Set());
   const [locSearch, setLocSearch] = useState('');
   const [arrivalTimes, setArrivalTimes] = useState<Record<string, string>>({});
+  const [cargoRatios, setCargoRatios] = useState<Record<string, number>>({});
+  const [defaultCargoRatio, setDefaultCargoRatio] = useState(100);
   const [departureTime, setDepartureTime] = useState('');
 
   // Step2
@@ -97,18 +103,22 @@ export default function PlanDetailPage() {
     setTrucks(await truckRes.json());
     setDrivers(await driverRes.json());
     const settingsData = await settingsRes.json();
+    setDefaultCargoRatio(settingsData.defaultCargoRatio);
 
     if (planData.routes.length > 0) {
       const ids = new Set<string>();
       const times: Record<string, string> = {};
+      const ratios: Record<string, number> = {};
       planData.routes.forEach(r =>
         r.stops.forEach(s => {
           ids.add(s.locationId);
           if (s.scheduledTime && s.isTimeFixed) times[s.locationId] = format(new Date(s.scheduledTime), 'HH:mm');
+          ratios[s.locationId] = s.cargoRatio;
         })
       );
       setSelectedLocationIds(ids);
       setArrivalTimes(times);
+      setCargoRatios(ratios);
       if (planData.routes.length > 0) {
         const r = planData.routes[0];
         setAssignments([{ truckId: r.truckId, driverId: r.driverId }]);
@@ -145,6 +155,7 @@ export default function PlanDetailPage() {
           stopOrder: s.stopOrder,
           scheduledTime: s.scheduledTime,
           isTimeFixed: s.isTimeFixed,
+          cargoRatio: s.cargoRatio,
         })),
     }));
   }
@@ -171,6 +182,13 @@ export default function PlanDetailPage() {
     updatedAt: new Date(),
   } as DeliveryPlan);
   const editable = editWarning !== 'locked';
+  const truckDriverLocked = plan.routes.some(r => r.status !== 'PENDING');
+  const fixedLocationInfo = new Map<string, 'COMPLETED' | 'SKIPPED'>();
+  plan.routes.forEach(r =>
+    r.stops.forEach(s => {
+      if (s.status !== 'PENDING') fixedLocationInfo.set(s.locationId, s.status as 'COMPLETED' | 'SKIPPED');
+    })
+  );
 
   const minDate = format(new Date(), 'yyyy-MM-dd');
   const maxDate = format(addDays(new Date(), 2), 'yyyy-MM-dd');
@@ -178,6 +196,12 @@ export default function PlanDetailPage() {
   const filteredLocations = locations.filter(
     l => l.name.includes(locSearch) || l.address.includes(locSearch)
   );
+
+  const totalCargoRatio = Array.from(selectedLocationIds).reduce(
+    (sum, id) => sum + (cargoRatios[id] ?? 0),
+    0
+  );
+  const cargoFull = totalCargoRatio >= 100;
 
   const ganttRoutes: GanttRoute[] = routes.map(r => ({
     id: r.id,
@@ -189,6 +213,7 @@ export default function PlanDetailPage() {
   }));
 
   function toggleLocation(id: string) {
+    if (!selectedLocationIds.has(id) && cargoFull) return;
     setSelectedLocationIds(prev => {
       const next = new Set(prev);
       if (next.has(id)) {
@@ -198,8 +223,15 @@ export default function PlanDetailPage() {
           delete nextTimes[id];
           return nextTimes;
         });
+        setCargoRatios(prevRatios => {
+          const nextRatios = { ...prevRatios };
+          delete nextRatios[id];
+          return nextRatios;
+        });
       } else {
         next.add(id);
+        const initialRatio = Math.min(roundToCargoStep(defaultCargoRatio), 100 - totalCargoRatio);
+        setCargoRatios(prevRatios => ({ ...prevRatios, [id]: initialRatio }));
       }
       return next;
     });
@@ -212,6 +244,17 @@ export default function PlanDetailPage() {
       else delete next[id];
       return next;
     });
+  }
+
+  function updateCargoRatio(id: string, value: number) {
+    setCargoRatios(prev => ({ ...prev, [id]: value }));
+  }
+
+  function cargoOptionsFor(id: string): number[] {
+    const maxAllowed = 100 - totalCargoRatio + (cargoRatios[id] ?? 0);
+    const options: number[] = [];
+    for (let v = CARGO_RATIO_STEP; v <= maxAllowed; v += CARGO_RATIO_STEP) options.push(v);
+    return options;
   }
 
   function handleMapClick(coord: { lat: number; lng: number }) {
@@ -286,20 +329,25 @@ export default function PlanDetailPage() {
       if (valid.length === 0) {
         throw new Error('トラックとドライバーを1組以上設定してください');
       }
+      const editableLocationIds = Array.from(selectedLocationIds).filter(id => !fixedLocationInfo.has(id));
       const arrivalTimesIso = Object.fromEntries(
         Object.entries(arrivalTimes)
-          .filter(([id, time]) => selectedLocationIds.has(id) && time)
+          .filter(([id, time]) => selectedLocationIds.has(id) && !fixedLocationInfo.has(id) && time)
           .map(([id, time]) => [id, timeToIso(time)])
+      );
+      const cargoRatiosForSelected = Object.fromEntries(
+        Object.entries(cargoRatios).filter(([id]) => selectedLocationIds.has(id) && !fixedLocationInfo.has(id))
       );
       await saveAssignmentAndDate();
       const res = await fetch(`/api/plans/${planId}/optimize`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          locationIds: Array.from(selectedLocationIds),
+          locationIds: editableLocationIds,
           truckIds: valid.map(a => a.truckId),
           driverIds: valid.map(a => a.driverId),
           arrivalTimes: arrivalTimesIso,
+          cargoRatios: cargoRatiosForSelected,
           departureTime: departureTime || undefined,
           force,
         }),
@@ -343,7 +391,12 @@ export default function PlanDetailPage() {
         body: JSON.stringify({
           routes: routes.map(r => ({
             id: r.id,
-            stops: r.stops.map(s => ({ id: s.id, locationId: s.locationId, stopOrder: s.stopOrder })),
+            stops: r.stops.map(s => ({
+              id: s.id,
+              locationId: s.locationId,
+              stopOrder: s.stopOrder,
+              cargoRatio: cargoRatios[s.locationId] ?? s.cargoRatio,
+            })),
           })),
         }),
       });
@@ -358,44 +411,35 @@ export default function PlanDetailPage() {
     }
   }
 
-  function toggleAddStopLocation(id: string) {
-    setAddStopLocationIds(prev => {
-      const next = new Set(prev);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
-      return next;
-    });
-  }
-
-  async function handleAddStops() {
-    if (!addStopRouteId || addStopLocationIds.size === 0) return;
-    setBusy(true);
-    setError('');
-    try {
-      const res = await fetch(`/api/plans/${planId}/routes/${addStopRouteId}/add-stops`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ locationIds: Array.from(addStopLocationIds) }),
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error);
-      setPlan(data);
-      setRoutes(routesFromApi(data.routes));
-      setAddStopLocationIds(new Set());
-      setAddStopSearch('');
-    } catch (err) {
-      setError(err instanceof Error ? err.message : '配送先の追加に失敗しました');
-    } finally {
-      setBusy(false);
-    }
-  }
-
   async function handleDelete() {
-    if (!confirm('この配送計画を削除しますか？この操作は取り消せません。')) return;
+    if (!plan) return;
+    const hasStartedRoute = plan.routes.some(r => r.status !== 'PENDING');
+    let confirmPlanDate: string | undefined;
+
+    if (hasStartedRoute) {
+      const expected = format(new Date(plan.planDate), 'yyyy-MM-dd');
+      const input = window.prompt(
+        `運送が開始されているルートが含まれています。削除するには計画日（${expected}）を入力してください。`
+      );
+      if (input === null) return;
+      if (input !== expected) {
+        setError('入力された計画日が一致しないため削除を中止しました');
+        return;
+      }
+      if (!confirm('本当に削除してよいですか？この操作は取り消せません。')) return;
+      confirmPlanDate = input;
+    } else if (!confirm('この配送計画を削除しますか？この操作は取り消せません。')) {
+      return;
+    }
+
     setBusy(true);
     setError('');
     try {
-      const res = await fetch(`/api/plans/${planId}`, { method: 'DELETE' });
+      const res = await fetch(`/api/plans/${planId}`, {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: confirmPlanDate ? JSON.stringify({ confirmPlanDate }) : undefined,
+      });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error);
       router.push('/plans');
@@ -405,8 +449,8 @@ export default function PlanDetailPage() {
     }
   }
 
-  async function handleSetStatus(status: 'DRAFT' | 'CONFIRMED') {
-    if (status === 'CONFIRMED' && !confirm('この配送計画を確定しますか？確定後は当日まで一部編集が制限されます。')) {
+  async function handleConfirmPlan() {
+    if (!confirm('この配送計画を確定しますか？確定後は当日まで一部編集が制限されます。')) {
       return;
     }
     setBusy(true);
@@ -415,12 +459,12 @@ export default function PlanDetailPage() {
       const res = await fetch(`/api/plans/${planId}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ status }),
+        body: JSON.stringify({ status: 'CONFIRMED' }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error);
+      // 確定後も画面に留まり、そのままドライバー用URLをコピーできるようにする
       setPlan(prev => (prev ? { ...prev, status: data.status } : prev));
-      router.push('/plans');
     } catch (err) {
       setError(err instanceof Error ? err.message : '更新に失敗しました');
     } finally {
@@ -431,24 +475,33 @@ export default function PlanDetailPage() {
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
-        <h1 className="text-xl font-bold text-gray-800">配送計画 {format(new Date(plan.planDate), 'yyyy/MM/dd')}</h1>
+        <h1 className="flex items-center gap-2 text-xl font-bold text-gray-800">
+          配送計画 {format(new Date(plan.planDate), 'yyyy/MM/dd')}
+          <span
+            className={`rounded-full px-3 py-1 text-sm font-bold text-white ${
+              plan.routes.length === 0 ? 'bg-indigo-600' : 'bg-orange-500'
+            }`}
+          >
+            {plan.routes.length === 0 ? 'ルート新規作成' : 'ルート編集'}
+          </span>
+        </h1>
         <div className="flex items-center gap-3">
           <PlanStatusBadge status={plan.status} />
-          {plan.status === 'DRAFT' && (
-            <button
-              onClick={handleDelete}
-              disabled={busy}
-              className="rounded border border-red-300 px-3 py-1.5 text-sm font-medium text-red-600 hover:bg-red-50 disabled:opacity-50"
-            >
-              削除
-            </button>
-          )}
+          <button
+            onClick={handleDelete}
+            disabled={busy}
+            className="rounded border border-red-300 px-3 py-1.5 text-sm font-medium text-red-600 hover:bg-red-50 disabled:opacity-50"
+          >
+            削除
+          </button>
         </div>
       </div>
 
       {editWarning === 'same_day' && (
         <div className="rounded bg-yellow-50 p-3 text-sm text-yellow-800">
-          本日分の計画を編集しています。配送中のルートに影響する可能性があるため注意してください。
+          {plan.routes.length === 0
+            ? '本日分の計画を新規で作成しています。'
+            : '本日分の計画を編集しています。配送中のルートに影響する可能性があるため注意してください。'}
         </div>
       )}
       {!editable && (
@@ -458,61 +511,11 @@ export default function PlanDetailPage() {
       )}
       {error && <p className="rounded bg-red-50 p-2 text-sm text-red-600">{error}</p>}
 
-      {plan.status === 'IN_PROGRESS' && (
-        <div className="rounded-lg border border-blue-200 bg-blue-50 p-3 shadow-sm">
-          <h2 className="mb-1 text-sm font-semibold text-gray-700">配送先の追加（稼働中の計画）</h2>
-          <p className="mb-2 text-xs text-gray-500">
-            配達済み・スキップ済みの停車地はそのまま、未配達分と追加分のみを現在地から再最適化します。
-          </p>
-          <div className="mb-2 flex items-center gap-2">
-            <select
-              value={addStopRouteId}
-              onChange={e => setAddStopRouteId(e.target.value)}
-              className="rounded border border-gray-300 px-2 py-1 text-sm"
-            >
-              <option value="">追加先のルートを選択</option>
-              {plan.routes.map(r => (
-                <option key={r.id} value={r.id}>
-                  {r.truck.plateNo} / {r.driver.name}
-                </option>
-              ))}
-            </select>
-            <input
-              placeholder="配送先検索"
-              value={addStopSearch}
-              onChange={e => setAddStopSearch(e.target.value)}
-              className="flex-1 rounded border border-gray-300 px-2 py-1 text-sm"
-            />
-          </div>
-          <div className="mb-2 max-h-48 space-y-1 overflow-y-auto rounded border border-gray-200 bg-white p-2">
-            {locations
-              .filter(l => l.name.includes(addStopSearch) || l.address.includes(addStopSearch))
-              .map(loc => (
-                <label key={loc.id} className="flex items-center gap-2 text-sm">
-                  <input
-                    type="checkbox"
-                    checked={addStopLocationIds.has(loc.id)}
-                    onChange={() => toggleAddStopLocation(loc.id)}
-                  />
-                  <span className="truncate">{loc.name}</span>
-                </label>
-              ))}
-          </div>
-          <button
-            onClick={handleAddStops}
-            disabled={busy || !addStopRouteId || addStopLocationIds.size === 0}
-            className="rounded bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50"
-          >
-            {busy ? '追加・再最適化中...' : `追加して再最適化（${addStopLocationIds.size}件）`}
-          </button>
-        </div>
-      )}
-
       {/* ステップナビ */}
       <div className="flex gap-2 text-sm">
         {[
-          { value: 1, label: 'Step 1: 計画・ルート編集' },
-          { value: 2, label: 'Step 2: 確認・確定' },
+          { value: 1, label: 'Step 1: 配送ルート編集' },
+          { value: 2, label: 'Step 2: 確認' },
         ].map(s => (
           <button
             key={s.value}
@@ -556,7 +559,7 @@ export default function PlanDetailPage() {
             <div className="flex items-center gap-2">
               <select
                 value={assignments[0].truckId}
-                disabled={!editable}
+                disabled={!editable || truckDriverLocked}
                 onChange={e => updateAssignment(0, 'truckId', e.target.value)}
                 className="rounded border border-gray-300 px-2 py-1 text-sm"
               >
@@ -567,7 +570,7 @@ export default function PlanDetailPage() {
               </select>
               <select
                 value={assignments[0].driverId}
-                disabled={!editable}
+                disabled={!editable || truckDriverLocked}
                 onChange={e => updateAssignment(0, 'driverId', e.target.value)}
                 className="rounded border border-gray-300 px-2 py-1 text-sm"
               >
@@ -579,6 +582,9 @@ export default function PlanDetailPage() {
                 ))}
               </select>
             </div>
+            {truckDriverLocked && (
+              <p className="mt-2 text-xs text-gray-500">稼働中のためトラック・ドライバーは変更できません。</p>
+            )}
             {checkingAssignment && <p className="mt-2 text-xs text-gray-400">重複を確認中...</p>}
             {assignmentWarning && (
               <p className="mt-2 rounded bg-red-50 p-2 text-xs text-red-600">{assignmentWarning}</p>
@@ -589,7 +595,9 @@ export default function PlanDetailPage() {
             <div className="rounded-lg border border-gray-200 bg-white p-3 shadow-sm">
               <div className="mb-2 flex items-center justify-between">
                 <h2 className="text-sm font-semibold text-gray-700">配送先選択</h2>
-                <span className="text-xs text-gray-500">選択済み: {selectedLocationIds.size}件</span>
+                <span className={`text-xs ${cargoFull ? 'font-semibold text-red-600' : 'text-gray-500'}`}>
+                  選択済み: {selectedLocationIds.size}件 / 合計荷量: {totalCargoRatio}%
+                </span>
               </div>
               <input
                 placeholder="検索"
@@ -600,31 +608,57 @@ export default function PlanDetailPage() {
               <p className="mb-2 text-xs text-gray-400">
                 到着希望時刻を入力した配送先は最優先で順序付けされます。未入力の配送先はルート最適化により自動配置されます。
               </p>
+              {cargoFull && (
+                <p className="mb-2 rounded bg-red-50 p-2 text-xs text-red-600">
+                  荷量割合の合計が100%に達しました。追加するには既存の配送先の割合を減らしてください。
+                </p>
+              )}
               <div className="max-h-80 space-y-1 overflow-y-auto">
-                {filteredLocations.map(loc => (
-                  <div key={loc.id} className="flex items-center gap-2 text-sm">
-                    <label className="flex flex-1 items-center gap-2">
-                      <input
-                        type="checkbox"
-                        checked={selectedLocationIds.has(loc.id)}
-                        disabled={!editable}
-                        onChange={() => toggleLocation(loc.id)}
-                      />
-                      <span className="truncate">{loc.name}</span>
-                    </label>
-                    {selectedLocationIds.has(loc.id) && (
-                      <input
-                        type="time"
-                        disabled={!editable}
-                        value={arrivalTimes[loc.id] ?? ''}
-                        onChange={e => updateArrivalTime(loc.id, e.target.value)}
-                        className={`rounded border px-1 py-0.5 text-xs ${
-                          arrivalTimes[loc.id] ? 'border-red-300 bg-red-50' : 'border-gray-300'
-                        }`}
-                      />
-                    )}
-                  </div>
-                ))}
+                {filteredLocations.map(loc => {
+                  const selected = selectedLocationIds.has(loc.id);
+                  const fixed = fixedLocationInfo.get(loc.id);
+                  return (
+                    <div key={loc.id} className="flex items-center gap-2 text-sm">
+                      <label className="flex flex-1 items-center gap-2">
+                        <input
+                          type="checkbox"
+                          checked={selected}
+                          disabled={!editable || (!selected && cargoFull) || !!fixed}
+                          onChange={() => toggleLocation(loc.id)}
+                        />
+                        <span className="truncate">{loc.name}</span>
+                        {fixed && (
+                          <span className={`shrink-0 text-xs ${fixed === 'COMPLETED' ? 'text-green-600' : 'text-gray-400'}`}>
+                            {fixed === 'COMPLETED' ? '配達済み' : 'スキップ済み'}
+                          </span>
+                        )}
+                      </label>
+                      {selected && (
+                        <>
+                          <input
+                            type="time"
+                            disabled={!editable || !!fixed}
+                            value={arrivalTimes[loc.id] ?? ''}
+                            onChange={e => updateArrivalTime(loc.id, e.target.value)}
+                            className={`rounded border px-1 py-0.5 text-xs ${
+                              arrivalTimes[loc.id] ? 'border-red-300 bg-red-50' : 'border-gray-300'
+                            }`}
+                          />
+                          <select
+                            disabled={!editable || !!fixed}
+                            value={cargoRatios[loc.id] ?? roundToCargoStep(defaultCargoRatio)}
+                            onChange={e => updateCargoRatio(loc.id, Number(e.target.value))}
+                            className="rounded border border-gray-300 px-1 py-0.5 text-xs"
+                          >
+                            {cargoOptionsFor(loc.id).map(v => (
+                              <option key={v} value={v}>{v}%</option>
+                            ))}
+                          </select>
+                        </>
+                      )}
+                    </div>
+                  );
+                })}
               </div>
             </div>
             <div className="h-96 rounded-lg border border-gray-200 bg-white p-2 shadow-sm">
@@ -657,7 +691,7 @@ export default function PlanDetailPage() {
               }
               className="rounded bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50"
             >
-              {busy ? '最適化中...' : 'ルート最適化して確認へ'}
+              {busy ? '最適化中...' : 'ルートを最適化してStep2へ'}
             </button>
 
             <button
@@ -666,7 +700,7 @@ export default function PlanDetailPage() {
               className="rounded bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50"
               style={{ marginLeft: '1cm' }}
             >
-              ルート変更せずに確認へ
+              荷量のみ保存してStep2へ
             </button>
           </div>
         </div>
@@ -691,16 +725,20 @@ export default function PlanDetailPage() {
                     <td className="px-4 py-2">{r.driverName}</td>
                     <td className="px-4 py-2">{r.stops.length}</td>
                     <td className="px-4 py-2">
-                      <button
-                        onClick={() => {
-                          const url = `${window.location.origin}/driver/${r.id}`;
-                          navigator.clipboard.writeText(url);
-                          alert(`コピーしました:\n${url}`);
-                        }}
-                        className="text-blue-600 hover:underline"
-                      >
-                        URLをコピー
-                      </button>
+                      {plan.status === 'DRAFT' ? (
+                        <span className="text-xs text-gray-400">確定後に発行されます</span>
+                      ) : (
+                        <button
+                          onClick={() => {
+                            const url = `${window.location.origin}/driver/${r.id}`;
+                            navigator.clipboard.writeText(url);
+                            alert(`コピーしました:\n${url}`);
+                          }}
+                          className="text-blue-600 hover:underline"
+                        >
+                          URLをコピー
+                        </button>
+                      )}
                     </td>
                   </tr>
                 ))}
@@ -729,7 +767,7 @@ export default function PlanDetailPage() {
                           s.isTimeFixed ? 'border-red-300 bg-red-50' : 'border-gray-200'
                         }`}
                       >
-                        {i + 1}.{s.name} {isoToTime(s.scheduledTime) || '--:--'}
+                        {i + 1}.{s.name} {isoToTime(s.scheduledTime) || '--:--'}（{s.cargoRatio}%）
                       </span>
                     ))}
                   </div>
@@ -746,26 +784,23 @@ export default function PlanDetailPage() {
           <div className="space-y-2">
             <div className="flex gap-2">
               <button onClick={() => setStep(1)} className="rounded bg-gray-100 px-4 py-2 text-sm text-gray-700 hover:bg-gray-200">
-                戻る
+                Step1に戻る
               </button>
               <button
-                onClick={() => handleSetStatus('DRAFT')}
-                disabled={!editable || busy}
-                className="rounded bg-gray-600 px-4 py-2 text-sm font-medium text-white hover:bg-gray-700 disabled:opacity-50"
-              >
-                下書きとして保存
-              </button>
-              <button
-                onClick={() => handleSetStatus('CONFIRMED')}
+                onClick={handleConfirmPlan}
                 disabled={!editable || busy}
                 className="rounded bg-green-600 px-4 py-2 text-sm font-medium text-white hover:bg-green-700 disabled:opacity-50"
               >
                 計画を確定する
               </button>
+              <button
+                onClick={() => router.push('/plans')}
+                className="rounded bg-gray-100 px-4 py-2 text-sm text-gray-700 hover:bg-gray-200"
+              >
+                配送計画一覧へ
+              </button>
             </div>
             <p className="text-xs text-gray-500">
-              「下書きとして保存」: 未確定の状態で保存し、後で内容を変更できます。
-              <br />
               「計画を確定する」: ドライバーへの配信を前提とした確定状態にします。確定後は当日まで一部の編集が制限されます。
             </p>
           </div>

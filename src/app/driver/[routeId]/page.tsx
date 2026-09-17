@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from 'react';
 import { useParams } from 'next/navigation';
 import { format } from 'date-fns';
 import PlanStatusBadge from '@/components/plans/PlanStatusBadge';
+import FuelIcon from '@/components/icons/FuelIcon';
 import { PlanStatus, RouteStatus, StopStatus } from '@prisma/client';
 
 type Stop = {
@@ -16,6 +17,11 @@ type Stop = {
   location: { id: string; name: string; address: string; phone: string | null; lat: number; lng: number };
 };
 
+type FuelLog = {
+  id: string;
+  timestamp: string;
+};
+
 type RouteDetail = {
   id: string;
   status: RouteStatus;
@@ -23,6 +29,7 @@ type RouteDetail = {
   driver: { name: string };
   plan: { planDate: string; status: PlanStatus };
   stops: Stop[];
+  fuelLogs: FuelLog[];
 };
 
 const STOP_LABELS: Record<StopStatus, string> = {
@@ -37,16 +44,46 @@ export default function DriverRoutePage() {
 
   const [route, setRoute] = useState<RouteDetail | null>(null);
   const [error, setError] = useState('');
+  const [deleted, setDeleted] = useState(false);
   const [tracking, setTracking] = useState(false);
   const [updatingStopId, setUpdatingStopId] = useState<string | null>(null);
   const [startingRoute, setStartingRoute] = useState(false);
+  const [recordingFuel, setRecordingFuel] = useState(false);
+  const [cancelingFuelId, setCancelingFuelId] = useState<string | null>(null);
+  const [showUpdatedBanner, setShowUpdatedBanner] = useState(false);
   const watchIdRef = useRef<number | null>(null);
+  const prevStopsFingerprintRef = useRef<string | null>(null);
+  const pollIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  function handleDeleted() {
+    setDeleted(true);
+    stopTracking();
+    if (pollIntervalRef.current) {
+      clearInterval(pollIntervalRef.current);
+      pollIntervalRef.current = null;
+    }
+  }
 
   async function fetchRoute() {
     try {
       const res = await fetch(`/api/driver/${routeId}`);
+      if (res.status === 404) {
+        handleDeleted();
+        return;
+      }
       const data = await res.json();
       if (!res.ok) throw new Error(data.error);
+      // 停車地の構成（件数・順序・予定時刻）が変わったら「運送開始」「完了/スキップ」操作以外での更新とみなす
+      const fingerprint = (data.stops as Stop[])
+        .slice()
+        .sort((a, b) => a.stopOrder - b.stopOrder)
+        .map(s => `${s.id}:${s.stopOrder}:${s.scheduledTime ?? ''}`)
+        .join('|');
+      if (prevStopsFingerprintRef.current !== null && prevStopsFingerprintRef.current !== fingerprint) {
+        setShowUpdatedBanner(true);
+        if ('vibrate' in navigator) navigator.vibrate([200, 100, 200]);
+      }
+      prevStopsFingerprintRef.current = fingerprint;
       setRoute(data);
     } catch (err) {
       setError(err instanceof Error ? err.message : '取得に失敗しました');
@@ -55,8 +92,10 @@ export default function DriverRoutePage() {
 
   useEffect(() => {
     fetchRoute();
-    const interval = setInterval(fetchRoute, 30000);
-    return () => clearInterval(interval);
+    pollIntervalRef.current = setInterval(fetchRoute, 30000);
+    return () => {
+      if (pollIntervalRef.current) clearInterval(pollIntervalRef.current);
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [routeId]);
 
@@ -105,6 +144,10 @@ export default function DriverRoutePage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ status: 'IN_PROGRESS' }),
       });
+      if (res.status === 404) {
+        handleDeleted();
+        return;
+      }
       if (!res.ok) throw new Error((await res.json()).error);
       await fetchRoute();
     } catch (err) {
@@ -122,6 +165,10 @@ export default function DriverRoutePage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ status }),
       });
+      if (res.status === 404) {
+        handleDeleted();
+        return;
+      }
       if (!res.ok) throw new Error((await res.json()).error);
       await fetchRoute();
     } catch (err) {
@@ -131,6 +178,50 @@ export default function DriverRoutePage() {
     }
   }
 
+  async function recordFuel() {
+    setRecordingFuel(true);
+    try {
+      const res = await fetch('/api/tracking/fuel', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ routeId }),
+      });
+      if (res.status === 404) {
+        handleDeleted();
+        return;
+      }
+      if (!res.ok) throw new Error((await res.json()).error);
+      await fetchRoute();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : '給油記録の追加に失敗しました');
+    } finally {
+      setRecordingFuel(false);
+    }
+  }
+
+  async function cancelFuel(id: string) {
+    setCancelingFuelId(id);
+    try {
+      const res = await fetch(`/api/tracking/fuel/${id}`, { method: 'DELETE' });
+      if (!res.ok) throw new Error((await res.json()).error);
+      await fetchRoute();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : '給油記録の取り消しに失敗しました');
+    } finally {
+      setCancelingFuelId(null);
+    }
+  }
+
+  if (deleted) {
+    return (
+      <div className="flex min-h-screen items-center justify-center p-4">
+        <div className="max-w-sm rounded-lg border border-red-200 bg-red-50 p-6 text-center">
+          <p className="text-lg font-bold text-red-700">この配送ルートは削除されました</p>
+          <p className="mt-2 text-sm text-red-600">配送を中止し、担当者にご確認ください。</p>
+        </div>
+      </div>
+    );
+  }
   if (error && !route) {
     return (
       <div className="flex min-h-screen items-center justify-center p-4">
@@ -150,28 +241,85 @@ export default function DriverRoutePage() {
 
   return (
     <div className="min-h-screen bg-gray-50 pb-24">
-      <header className="sticky top-0 z-10 border-b border-gray-200 bg-white p-4 shadow-sm">
-        <div className="flex items-center justify-between">
-          <h1 className="text-lg font-bold text-gray-800">{route.truck.plateNo}</h1>
-          <PlanStatusBadge status={route.plan.status} />
-        </div>
-        <p className="text-sm text-gray-500">
-          {format(new Date(route.plan.planDate), 'yyyy/MM/dd')} ・ {route.driver.name}
-        </p>
-        <p className="mt-1 text-sm text-gray-600">
-          進捗 {completedCount} / {route.stops.length}
-        </p>
-        <div className="mt-2 h-2 w-full rounded-full bg-gray-200">
-          <div
-            className="h-2 rounded-full bg-blue-600 transition-all"
-            style={{ width: `${route.stops.length ? (completedCount / route.stops.length) * 100 : 0}%` }}
-          />
-        </div>
-      </header>
+      <div className="sticky top-0 z-20">
+        {showUpdatedBanner && (
+          <div className="flex animate-pulse items-center justify-between gap-2 border-b-4 border-red-800 bg-red-600 px-4 py-3 text-sm font-bold text-white shadow-lg">
+            <span className="flex items-center gap-2">
+              <span aria-hidden className="text-lg">⚠️</span>
+              ルートが更新されました！内容をご確認ください
+            </span>
+            <button
+              onClick={() => setShowUpdatedBanner(false)}
+              className="shrink-0 rounded bg-white px-3 py-1 text-xs font-bold text-red-700"
+            >
+              確認
+            </button>
+          </div>
+        )}
+        <header className="border-b border-gray-200 bg-white p-4 shadow-sm">
+          <div className="flex items-center justify-between">
+            <h1 className="text-lg font-bold text-gray-800">{route.truck.plateNo}</h1>
+            <PlanStatusBadge status={route.plan.status} />
+          </div>
+          <p className="text-sm text-gray-500">
+            {format(new Date(route.plan.planDate), 'yyyy/MM/dd')} ・ {route.driver.name}
+          </p>
+          <p className="mt-1 text-sm text-gray-600">
+            進捗 {completedCount} / {route.stops.length}
+          </p>
+          <div className="mt-2 h-2 w-full rounded-full bg-gray-200">
+            <div
+              className="h-2 rounded-full bg-blue-600 transition-all"
+              style={{ width: `${route.stops.length ? (completedCount / route.stops.length) * 100 : 0}%` }}
+            />
+          </div>
+        </header>
+      </div>
 
       {error && <p className="m-3 rounded bg-red-50 p-2 text-sm text-red-600">{error}</p>}
 
       <main className="space-y-3 p-3">
+        {route.status === 'PENDING' && (
+          <button
+            onClick={startRoute}
+            disabled={startingRoute}
+            className="w-full rounded bg-orange-500 py-3 text-sm font-bold text-white disabled:opacity-50"
+          >
+            {startingRoute ? '更新中...' : '運送開始'}
+          </button>
+        )}
+
+        <div className="rounded-lg border border-gray-200 bg-white p-3 shadow-sm">
+          <div className="flex items-center justify-between">
+            <p className="text-sm font-medium text-gray-700">給油記録</p>
+            <button
+              onClick={recordFuel}
+              disabled={recordingFuel}
+              aria-label="給油した"
+              title="給油した"
+              className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-teal-600 text-xl text-white disabled:opacity-50"
+            >
+              {recordingFuel ? <span className="text-xs">…</span> : <FuelIcon className="h-5 w-5" />}
+            </button>
+          </div>
+          {route.fuelLogs.length > 0 && (
+            <ul className="mt-2 space-y-1">
+              {route.fuelLogs.map(log => (
+                <li key={log.id} className="flex items-center justify-between text-sm text-gray-600">
+                  <span>{format(new Date(log.timestamp), 'HH:mm')}に給油しました</span>
+                  <button
+                    onClick={() => cancelFuel(log.id)}
+                    disabled={cancelingFuelId === log.id}
+                    className="rounded bg-gray-100 px-2 py-1 text-xs font-medium text-gray-600 disabled:opacity-40"
+                  >
+                    取消
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+
         {route.stops.map((stop, i) => (
           <div key={stop.id} className="rounded-lg border border-gray-200 bg-white p-3 shadow-sm">
             <div className="flex items-start justify-between gap-2">
@@ -252,15 +400,6 @@ export default function DriverRoutePage() {
       </main>
 
       <footer className="fixed bottom-0 left-0 right-0 border-t border-gray-200 bg-white p-3 space-y-2">
-        {route.status === 'PENDING' && (
-          <button
-            onClick={startRoute}
-            disabled={startingRoute}
-            className="w-full rounded bg-orange-500 py-3 text-sm font-bold text-white disabled:opacity-50"
-          >
-            {startingRoute ? '更新中...' : '運送開始'}
-          </button>
-        )}
         {!tracking ? (
           <button onClick={startTracking} className="w-full rounded bg-blue-600 py-3 text-sm font-bold text-white">
             位置情報の共有を開始
