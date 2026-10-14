@@ -24,39 +24,6 @@ export function bearingDeg(a: Coord, b: Coord): number {
   return ((θ * 180) / Math.PI + 360) % 360;
 }
 
-export function clusterLocations<T extends Coord>(locations: T[], k: number): T[][] {
-  let centroids: Coord[] = locations
-    .slice()
-    .sort(() => Math.random() - 0.5)
-    .slice(0, k)
-    .map(l => ({ lat: l.lat, lng: l.lng }));
-
-  let assignments = new Array(locations.length).fill(0);
-
-  for (let iter = 0; iter < 100; iter++) {
-    const next = locations.map(loc => {
-      let best = 0, minD = Infinity;
-      centroids.forEach((c, i) => {
-        const d = haversine(loc, c);
-        if (d < minD) { minD = d; best = i; }
-      });
-      return best;
-    });
-    if (next.every((v, i) => v === assignments[i])) break;
-    assignments = next;
-    centroids = centroids.map((_, i) => {
-      const group = locations.filter((_, j) => assignments[j] === i);
-      if (!group.length) return centroids[i];
-      return {
-        lat: group.reduce((s, l) => s + l.lat, 0) / group.length,
-        lng: group.reduce((s, l) => s + l.lng, 0) / group.length,
-      };
-    });
-  }
-
-  return centroids.map((_, i) => locations.filter((_, j) => assignments[j] === i));
-}
-
 export function nearestNeighborOrder<T extends Coord>(depot: Coord, stops: T[]): T[] {
   const unvisited = [...stops];
   const route: T[] = [];
@@ -219,16 +186,6 @@ export function estimateReturnToDepotTime(
 ): Date {
   const departFromLastStop = addTimeOutsideLunch(lastStopArrivalTime, stopDurationMinutes * 60 * 1000, lunchBreak);
   return skipLunchBreak(addTimeOutsideLunch(departFromLastStop, travelMs(lastStop, depot), lunchBreak), lunchBreak);
-}
-
-export function routeDistance(depot: Coord, stops: Coord[]): number {
-  let total = 0;
-  let current = depot;
-  for (const s of stops) {
-    total += haversine(current, s);
-    current = s;
-  }
-  return total;
 }
 
 export const TOCHIGI_DEPOT: Coord = { lat: 36.5657, lng: 139.8836 };

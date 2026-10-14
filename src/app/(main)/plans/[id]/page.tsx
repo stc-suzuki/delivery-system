@@ -6,7 +6,6 @@ import { format, addDays } from 'date-fns';
 import { ArrowUpDown, ClipboardCheck } from 'lucide-react';
 import PageHeader from '@/components/ui/PageHeader';
 import RelativeDayBadge from '@/components/plans/RelativeDayBadge';
-import type { RouteData } from '@/components/plans/RouteCard';
 import { splitPlateNo } from '@/components/plans/DispatchGanttChart';
 import { PackageRow, groupPackagesByProduct } from '@/components/plans/PoolEditor';
 import { getEditWarning } from '@/lib/planEditPolicy';
@@ -19,10 +18,6 @@ import { WARNING_USAGE_RATIO } from '@/lib/capacityOverviewStatus';
 import { DRIVER_TYPE_LABELS } from '@/lib/driverSchedule';
 import { useDialog } from '@/components/ui/DialogProvider';
 import type { DriverType, RouteStatus } from '@prisma/client';
-
-// ルート同士の見分けは行の分離・トラック番号表示で十分なため、識別色はローテーションさせず単一色に統一する
-// （赤は到着希望時刻ありの停車地マーカーの警告色として予約しているため使わない）
-const ROUTE_COLOR = '#2563eb';
 
 // 「配送先の割当」の一覧表示用。同一商品（商品名・寸法が一致するもの）をまとめ、
 // 個数を数字で付けて表示する（1個ずつ並べると同じ行が何行も並んでしまうため）
@@ -175,7 +170,6 @@ export default function PlanDetailPage() {
   const [assignments, setAssignments] = useState<{ truckId: string; driverId: string }[]>([
     { truckId: '', driverId: '' },
   ]);
-  const [, setRoutes] = useState<RouteData[]>([]);
   const [assignmentWarning, setAssignmentWarning] = useState('');
   const [checkingAssignment, setCheckingAssignment] = useState(false);
 
@@ -199,7 +193,6 @@ export default function PlanDetailPage() {
 
   function applyAssignmentRoutes(assignmentRoutes: ApiRoute[]) {
     setSiblingRoutes(assignmentRoutes);
-    setRoutes(routesFromApi(assignmentRoutes));
 
     const ids = new Set<string>();
     const times: Record<string, string> = {};
@@ -275,29 +268,6 @@ export default function PlanDetailPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [anchorRouteId]);
 
-  function routesFromApi(apiRoutes: ApiRoute[]): RouteData[] {
-    return apiRoutes.map(r => ({
-      id: r.id,
-      truckPlateNo: r.truck.plateNo,
-      driverName: r.driver.name,
-      color: ROUTE_COLOR,
-      departureTime: r.departureTime,
-      stops: r.stops
-        .slice()
-        .sort((a, b) => a.stopOrder - b.stopOrder)
-        .map(s => ({
-          id: s.id,
-          locationId: s.locationId,
-          name: s.location.name,
-          lat: s.location.lat,
-          lng: s.location.lng,
-          stopOrder: s.stopOrder,
-          scheduledTime: s.scheduledTime,
-          requestedArrivalTime: s.requestedArrivalTime,
-          isTimeFixed: s.isTimeFixed,
-        })),
-    }));
-  }
 
   function timeToIso(time: string): string | null {
     if (!time) return null;
