@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { Prisma } from '@prisma/client';
 import { prisma } from '@/lib/prisma';
 import { getIO } from '@/lib/socket';
+import { checkDriverAccess } from '@/lib/driverAccess';
 
 // PATCH: 停車地のステータス更新（COMPLETED / SKIPPED）
 export async function PATCH(
@@ -15,14 +16,28 @@ export async function PATCH(
       return NextResponse.json({ error: 'status の値が不正です' }, { status: 400 });
     }
 
+    // 有効期限の確認のため、更新より前に所属ルートの配送日を調べる
+    const target = await prisma.deliveryStop.findUnique({
+      where: { id: params.id },
+      select: { route: { select: { routeDate: true } } },
+    });
+    if (!target) {
+      return NextResponse.json({ error: '対象の停車地が見つかりません（配送ルートが削除された可能性があります）' }, { status: 404 });
+    }
+    if (!target.route) {
+      return NextResponse.json({ error: 'この停車地はまだトラックに割り当てられていません' }, { status: 400 });
+    }
+    const { loggedIn, denied } = await checkDriverAccess(req, target.route.routeDate);
+    if (denied) return denied;
+
     const stop = await prisma.deliveryStop.update({
       where: { id: params.id },
       data: {
         status,
         arrivedAt: status === 'COMPLETED' ? new Date() : null,
         // ドライバーが押し忘れた場合に本部（リアルタイム追跡画面）が代理で操作したことを記録する。
-        // actor省略時（ドライバー画面からの呼び出し）は従来通りfalseのまま
-        statusSetByDispatcher: actor === 'DISPATCHER',
+        // actor省略時（ドライバー画面からの呼び出し）は従来通りfalseのまま。自己申告のため、ログイン済みの場合だけ認める
+        statusSetByDispatcher: actor === 'DISPATCHER' && loggedIn,
       },
       include: { route: { include: { stops: true, trips: true } } },
     });

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { Prisma } from '@prisma/client';
 import { prisma } from '@/lib/prisma';
+import { checkDriverAccess } from '@/lib/driverAccess';
 
 // POST: 給油記録の追加
 export async function POST(req: NextRequest) {
@@ -11,6 +12,12 @@ export async function POST(req: NextRequest) {
     if (!routeId) {
       return NextResponse.json({ error: 'routeId は必須です' }, { status: 400 });
     }
+    const route = await prisma.planRoute.findUnique({ where: { id: routeId }, select: { routeDate: true } });
+    if (!route) {
+      return NextResponse.json({ error: '対象のルートが見つかりません（配送計画が削除された可能性があります）' }, { status: 404 });
+    }
+    const { denied } = await checkDriverAccess(req, route.routeDate);
+    if (denied) return denied;
     const log = await prisma.fuelLog.create({ data: { routeId, tripId: tripId ?? null } });
     return NextResponse.json(log, { status: 201 });
   } catch (error) {

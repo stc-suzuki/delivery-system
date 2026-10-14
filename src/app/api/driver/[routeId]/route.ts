@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { Prisma } from '@prisma/client';
 import { prisma } from '@/lib/prisma';
 import { rescheduleFollowingTrips } from '@/lib/routeReorder';
+import { checkDriverAccess } from '@/lib/driverAccess';
 
 export async function PATCH(
   req: NextRequest,
@@ -9,7 +10,6 @@ export async function PATCH(
 ) {
   try {
     const { status, markReturned, actor, completeTripId, startTripId } = await req.json();
-    const isDispatcher = actor === 'DISPATCHER';
     const existing = await prisma.planRoute.findUnique({
       where: { id: params.routeId },
       include: { trips: { orderBy: { tripIndex: 'asc' } } },
@@ -17,6 +17,10 @@ export async function PATCH(
     if (!existing) {
       return NextResponse.json({ error: '対象のルートが見つかりません（削除された可能性があります）' }, { status: 404 });
     }
+    const { loggedIn, denied } = await checkDriverAccess(req, existing.routeDate);
+    if (denied) return denied;
+    // 本部（リアルタイム追跡画面）による代理操作の記録は、ログイン済みの場合だけ認める
+    const isDispatcher = actor === 'DISPATCHER' && loggedIn;
 
     // 複数便対応フェーズ3：便の完了（本社へ）・開始
     if (completeTripId) {
@@ -130,7 +134,7 @@ export async function PATCH(
 }
 
 export async function GET(
-  _req: NextRequest,
+  req: NextRequest,
   { params }: { params: { routeId: string } }
 ) {
   try {
@@ -138,7 +142,8 @@ export async function GET(
       where: { id: params.routeId },
       include: {
         truck: true,
-        driver: true,
+        // ログインなしで開ける画面のため、配送に要らないドライバーの個人情報（電話番号・免許証番号など）は返さない
+        driver: { select: { id: true, name: true } },
         stops: {
           orderBy: { stopOrder: 'asc' },
           include: { location: true },
@@ -152,6 +157,8 @@ export async function GET(
     if (!route) {
       return NextResponse.json({ error: 'ルートが見つかりません' }, { status: 404 });
     }
+    const { denied } = await checkDriverAccess(req, route.routeDate);
+    if (denied) return denied;
     return NextResponse.json(route);
   } catch (error) {
     console.error(error);

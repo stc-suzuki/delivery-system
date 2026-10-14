@@ -81,6 +81,8 @@ export default function DriverRoutePage() {
   const [route, setRoute] = useState<RouteDetail | null>(null);
   const [error, setError] = useState('');
   const [deleted, setDeleted] = useState(false);
+  // ドライバー用URLは配送日の当日しか使えない。日付が変わった・別の日のURLを開いた場合に立てる
+  const [expired, setExpired] = useState(false);
   const [tracking, setTracking] = useState(false);
   const [updatingStopId, setUpdatingStopId] = useState<string | null>(null);
   const [startingRoute, setStartingRoute] = useState(false);
@@ -109,6 +111,15 @@ export default function DriverRoutePage() {
 
   function handleDeleted() {
     setDeleted(true);
+    stopUpdates();
+  }
+
+  function handleExpired() {
+    setExpired(true);
+    stopUpdates();
+  }
+
+  function stopUpdates() {
     stopTracking();
     if (pollIntervalRef.current) {
       clearInterval(pollIntervalRef.current);
@@ -124,6 +135,10 @@ export default function DriverRoutePage() {
         return;
       }
       const data = await res.json();
+      if (res.status === 403 && data.expired) {
+        handleExpired();
+        return;
+      }
       if (!res.ok) throw new Error(data.error);
       // 停車地の構成（件数・順序・予定時刻）が変わったら「運送開始」「完了/スキップ」操作以外での更新とみなす
       const fingerprint = (data.stops as Stop[])
@@ -336,6 +351,16 @@ export default function DriverRoutePage() {
         <div className="max-w-sm rounded-lg border border-red-200 bg-red-50 p-6 text-center">
           <p className="text-lg font-bold text-red-700">この配送ルートは削除されました</p>
           <p className="mt-2 text-sm text-red-600">配送を中止し、担当者にご確認ください。</p>
+        </div>
+      </div>
+    );
+  }
+  if (expired) {
+    return (
+      <div className="flex min-h-screen items-center justify-center p-4">
+        <div className="max-w-sm rounded-lg border border-amber-200 bg-amber-50 p-6 text-center">
+          <p className="text-lg font-bold text-amber-800">このURLの有効期限が切れています</p>
+          <p className="mt-2 text-sm text-amber-700">ドライバー用のURLは配送日の当日のみ利用できます。担当者に確認してください。</p>
         </div>
       </div>
     );

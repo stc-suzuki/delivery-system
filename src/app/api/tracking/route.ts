@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { getIO } from '@/lib/socket';
+import { checkDriverAccess } from '@/lib/driverAccess';
 
 export async function POST(req: NextRequest) {
   try {
@@ -19,6 +20,8 @@ export async function POST(req: NextRequest) {
     if (!route) {
       return NextResponse.json({ error: 'ルートが見つかりません' }, { status: 404 });
     }
+    const { denied } = await checkDriverAccess(req, route.routeDate);
+    if (denied) return denied;
 
     const log = await prisma.trackingLog.create({
       data: { routeId, lat, lng, tripId: tripId ?? null },
