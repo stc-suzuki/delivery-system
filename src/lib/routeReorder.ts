@@ -1,5 +1,5 @@
 import { Prisma } from '@prisma/client';
-import { skipLunchBreak, LunchBreak, Coord } from './routeOptimizer';
+import { addTimeOutsideLunch, LunchBreak, Coord } from './routeOptimizer';
 import { planTrips } from './tripPlanning';
 
 type Tx = Prisma.TransactionClient;
@@ -164,11 +164,11 @@ export async function rescheduleFollowingTrips(
   const depot: Coord = { lat: settings.depotLat, lng: settings.depotLng };
   const locationById = new Map(route.stops.map(s => [s.id, s.location.name]));
 
-  // 実際に本社へ戻った時刻（過去の実績）はそのまま起点にし、そこに積み込み時間を足した
-  // 「次の便の出発時刻」だけが昼休みにかかるかどうかをチェックする
-  // （optimize/route.tsの本社経由ロジックと同じ「到着→昼休みチェック→積み込み→出発→昼休みチェック」の手順）
+  // 実際に本社へ戻った時刻（過去の実績）はそのまま起点にし、そこに積み込み時間を足して
+  // 「次の便の出発時刻」を求める。昼休み中は積み込みも止めて休むため、途中で昼休みに入れば
+  // 休憩明けに残りを済ませる（optimize/route.tsの本社経由ロジックと同じ手順）
   const reloadMs = settings.reloadDurationMinutes * 60 * 1000;
-  const nextDepartureTime = skipLunchBreak(new Date(actualReturnedAt.getTime() + reloadMs), lunchBreak);
+  const nextDepartureTime = addTimeOutsideLunch(actualReturnedAt, reloadMs, lunchBreak);
 
   const stopsByTripId = new Map<string, typeof route.stops>();
   for (const trip of remainingTrips) {

@@ -94,6 +94,21 @@ export function skipLunchBreak(time: Date, lunchBreak?: LunchBreak): Date {
   return time;
 }
 
+// 開始時刻に所要時間（運転・荷下ろし・積み込み）を足した終了時刻。昼休みは運転も作業も
+// 止めて休む（2026-10-14決定）ため、途中で昼休みに入る場合は昼休みの長さだけ終了を遅らせる。
+// 昼休み中に始めようとした場合は休憩明けに始める。終了がちょうど昼休み開始の時刻になる場合は
+// 遅らせない（次の運転・作業を始める時点で、この関数またはskipLunchBreakが休憩明けに繰り下げる）
+export function addTimeOutsideLunch(start: Date, durationMs: number, lunchBreak?: LunchBreak): Date {
+  if (!lunchBreak) return new Date(start.getTime() + durationMs);
+  const begin = skipLunchBreak(start, lunchBreak).getTime();
+  const end = begin + durationMs;
+  const lunchStart = lunchBreak.start.getTime();
+  if (begin < lunchStart && end > lunchStart) {
+    return new Date(end + (lunchBreak.end.getTime() - lunchStart));
+  }
+  return new Date(end);
+}
+
 // 到着希望時刻が指定された地点は「その時刻までに着けばよい」制約として扱い、
 // 直前の到着（または出発）からその制約時刻までの余裕時間がある限り、近くの
 // 時刻未指定地点を経由させる。余裕がなくなった時点でその地点群への挿入を止め、
@@ -125,9 +140,9 @@ export function orderWithTimeBudget<T extends Coord & { arrivalTime?: string | n
         .sort((a, b) => a.dist - b.dist);
 
       const feasible = sorted.find(({ stop }) => {
-        const arrivalAtStop = skipLunchBreak(new Date(currentTime + travelMs(currentPos, stop)), lunchBreak).getTime();
-        const departAfterStop = arrivalAtStop + DWELL_MS;
-        const projectedAtAnchor = departAfterStop + travelMs(stop, anchor);
+        const arrivalAtStop = skipLunchBreak(addTimeOutsideLunch(new Date(currentTime), travelMs(currentPos, stop), lunchBreak), lunchBreak).getTime();
+        const departAfterStop = addTimeOutsideLunch(new Date(arrivalAtStop), DWELL_MS, lunchBreak);
+        const projectedAtAnchor = addTimeOutsideLunch(departAfterStop, travelMs(stop, anchor), lunchBreak).getTime();
         return projectedAtAnchor <= deadline;
       });
 
@@ -135,13 +150,14 @@ export function orderWithTimeBudget<T extends Coord & { arrivalTime?: string | n
 
       order.push(feasible.stop);
       pool.splice(feasible.index, 1);
-      currentTime = skipLunchBreak(new Date(currentTime + travelMs(currentPos, feasible.stop)), lunchBreak).getTime() + DWELL_MS;
+      const arrivalAtFeasible = skipLunchBreak(addTimeOutsideLunch(new Date(currentTime), travelMs(currentPos, feasible.stop), lunchBreak), lunchBreak);
+      currentTime = addTimeOutsideLunch(arrivalAtFeasible, DWELL_MS, lunchBreak).getTime();
       currentPos = feasible.stop;
     }
 
     order.push(anchor);
     currentPos = anchor;
-    currentTime = deadline + DWELL_MS;
+    currentTime = addTimeOutsideLunch(new Date(deadline), DWELL_MS, lunchBreak).getTime();
   }
 
   if (pool.length > 0) {
@@ -169,8 +185,7 @@ export function estimateStopTimes<T extends Coord & { arrivalTime?: string | nul
   const result: StopTimeEstimate<T>[] = [];
 
   for (const stop of orderedStops) {
-    const travelHours = haversine(currentPos, stop) / AVERAGE_SPEED_KMH;
-    const earliestArrival = skipLunchBreak(new Date(currentTime.getTime() + travelHours * 60 * 60 * 1000), lunchBreak);
+    const earliestArrival = skipLunchBreak(addTimeOutsideLunch(currentTime, travelMs(currentPos, stop), lunchBreak), lunchBreak);
 
     let actualTime = earliestArrival;
     let timeConflict = false;
@@ -184,7 +199,7 @@ export function estimateStopTimes<T extends Coord & { arrivalTime?: string | nul
     }
 
     result.push({ ...stop, estimatedTime: actualTime, timeConflict });
-    currentTime = skipLunchBreak(new Date(actualTime.getTime() + dwellMs), lunchBreak);
+    currentTime = addTimeOutsideLunch(actualTime, dwellMs, lunchBreak);
     currentPos = stop;
   }
 
@@ -202,12 +217,8 @@ export function estimateReturnToDepotTime(
   lunchBreak?: LunchBreak,
   stopDurationMinutes: number = STOP_DURATION_MINUTES
 ): Date {
-  const departFromLastStop = skipLunchBreak(
-    new Date(lastStopArrivalTime.getTime() + stopDurationMinutes * 60 * 1000),
-    lunchBreak
-  );
-  const travelHours = haversine(lastStop, depot) / AVERAGE_SPEED_KMH;
-  return skipLunchBreak(new Date(departFromLastStop.getTime() + travelHours * 60 * 60 * 1000), lunchBreak);
+  const departFromLastStop = addTimeOutsideLunch(lastStopArrivalTime, stopDurationMinutes * 60 * 1000, lunchBreak);
+  return skipLunchBreak(addTimeOutsideLunch(departFromLastStop, travelMs(lastStop, depot), lunchBreak), lunchBreak);
 }
 
 export function routeDistance(depot: Coord, stops: Coord[]): number {

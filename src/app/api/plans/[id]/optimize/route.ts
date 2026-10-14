@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { canEditRoute, getEditHorizonDays } from '@/lib/planEditPolicy';
-import { orderWithTimeBudget, estimateStopTimes, skipLunchBreak, haversine, AVERAGE_SPEED_KMH } from '@/lib/routeOptimizer';
+import { orderWithTimeBudget, estimateStopTimes, skipLunchBreak, addTimeOutsideLunch, haversine, AVERAGE_SPEED_KMH } from '@/lib/routeOptimizer';
 import { validatePackagesInput, MAX_STOPS_PER_ROUTE, PackageInput } from '@/lib/planValidation';
 import { checkCapacityOverflow, fitsBed, truckBed } from '@/lib/loadCapacity';
 
@@ -301,12 +301,12 @@ export async function POST(
     } else if (newLocationIds.length > 0) {
       const travelToDepotMs = (haversine(currentPos, depot) / AVERAGE_SPEED_KMH) * 60 * 60 * 1000;
       const reloadMs = settings.reloadDurationMinutes * 60 * 1000;
-      // 本社到着・積み込み完了のいずれかが昼休みにかかる場合は休憩明けまで繰り下げる
-      // （estimateStopTimesの各レッグと同じ「到着→昼休みチェック→作業→昼休みチェック」の手順）
-      const arrivalAtDepot = skipLunchBreak(new Date(now.getTime() + travelToDepotMs), lunchBreak);
+      // 昼休みは運転も積み込みも止めて休む。本社へ戻る途中・積み込みの途中で昼休みに入れば、
+      // 休憩明けに残りを済ませる（estimateStopTimesの各レッグと同じ手順）
+      const arrivalAtDepot = skipLunchBreak(addTimeOutsideLunch(now, travelToDepotMs, lunchBreak), lunchBreak);
       arrivalAtDepotForTrip = arrivalAtDepot;
       startPos = depot;
-      startTime = skipLunchBreak(new Date(arrivalAtDepot.getTime() + reloadMs), lunchBreak);
+      startTime = addTimeOutsideLunch(arrivalAtDepot, reloadMs, lunchBreak);
       warnings.push(
         `新しい配送先の追加のため、一旦本社に戻って積み込んでから出発する前提（積み込み時間${settings.reloadDurationMinutes}分を含む）で到着予定時刻を再計算しました`
       );

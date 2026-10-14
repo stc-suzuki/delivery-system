@@ -5,7 +5,7 @@
 // 複数便対応：1台＝1回の積み込みで1日分を配りきる前提ではなく、容積上限に達するたびに本社を
 // 経由して積み直す（＝複数便に分かれる）ことを見込んでシミュレーションする（simulateFinish参照）。
 
-import { orderWithTimeBudget, estimateStopTimes, estimateReturnToDepotTime, TOCHIGI_DEPOT, LunchBreak, STOP_DURATION_MINUTES, Coord } from './routeOptimizer';
+import { orderWithTimeBudget, estimateStopTimes, estimateReturnToDepotTime, addTimeOutsideLunch, TOCHIGI_DEPOT, LunchBreak, STOP_DURATION_MINUTES, Coord } from './routeOptimizer';
 import { AssignTruckInput, PoolStopInput } from './loadAssignment';
 import { fitsBed } from './loadCapacity';
 
@@ -84,7 +84,8 @@ function simulateFinish(
     // （batch.length > 0を条件にすることで、1件だけで上限を超える荷物も必ず1便には積む）
     if (capacityM3 != null && batch.length > 0 && tripVolume + vol > capacityM3) {
       closeTrip();
-      tripStartTime = new Date(finishTime.getTime() + reloadDurationMinutes * 60 * 1000);
+      // 昼休み中は積み込みも止めて休むため、途中で昼休みに入れば休憩明けに残りを済ませる
+      tripStartTime = addTimeOutsideLunch(finishTime, reloadDurationMinutes * 60 * 1000, lunchBreak);
     }
     batch.push(stop);
     tripVolume += vol;
