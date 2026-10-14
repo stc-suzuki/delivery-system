@@ -156,7 +156,7 @@ export default function SettingsPage() {
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-gray-700">本社での積み込み時間（稼働中ルートへの配送先追加時）</label>
+            <label className="block text-sm font-medium text-gray-700">本社での積み込み時間（便の間・稼働中ルートへの配送先追加時）</label>
             <div className="mt-1 flex items-center gap-2">
               <input
                 type="number"
@@ -169,7 +169,7 @@ export default function SettingsPage() {
               <span className="text-sm text-[#4B5563]">分</span>
             </div>
             <p className="mt-1 text-xs text-[#4B5563]">
-              稼働中のルートに新しい配送先を追加すると、ドライバーは一旦本社に戻ってから荷物を積み込んで再出発します。この積み込みにかかる所要時間を、到着予定時刻の再計算に使います（本社までの移動時間は別途自動計算されます）。
+              稼働中のルートに新しい配送先を追加すると、ドライバーは一旦本社に戻ってから荷物を積み込んで再出発します。この積み込みにかかる所要時間を、到着予定時刻の再計算に使います（本社までの移動時間は別途自動計算されます）。複数便の日の、便と便の間の積み込み時間や、定時超過の見込み時などの積み直し時間にも使われます。
             </p>
           </div>
         </SettingsCard>
