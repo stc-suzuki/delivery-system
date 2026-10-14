@@ -175,7 +175,7 @@ export default function PlanDetailPage() {
   const [assignments, setAssignments] = useState<{ truckId: string; driverId: string }[]>([
     { truckId: '', driverId: '' },
   ]);
-  const [routes, setRoutes] = useState<RouteData[]>([]);
+  const [, setRoutes] = useState<RouteData[]>([]);
   const [assignmentWarning, setAssignmentWarning] = useState('');
   const [checkingAssignment, setCheckingAssignment] = useState(false);
 

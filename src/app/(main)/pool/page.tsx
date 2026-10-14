@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, Suspense } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
 import { useSession } from 'next-auth/react';
 import {
@@ -86,7 +86,7 @@ function canonicalizePackages(pkgs: { productId: string | null; width: number; d
 // 権限がない場合はリンクを出さず問い合わせ案内のみ表示する
 const ROLE_RANK: Record<string, number> = { STAFF: 0, DELIVERY_ADMIN: 1, SYSTEM_ADMIN: 2 };
 
-export default function PoolPage() {
+function PoolPageContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const { data: session } = useSession();
@@ -789,5 +789,14 @@ export default function PoolPage() {
       </div>
       </div>
     </div>
+  );
+}
+
+// useSearchParams を使う画面は、本番の組み立て（next build）で事前描画できるよう Suspense で囲む必要がある
+export default function PoolPage() {
+  return (
+    <Suspense>
+      <PoolPageContent />
+    </Suspense>
   );
 }

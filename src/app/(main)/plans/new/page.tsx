@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useState, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import {
   format,
@@ -30,7 +30,7 @@ type ApiPoolStop = { id: string; locationId: string; routeId: string | null; loc
 // トラック・ドライバーの登録は/truck-schedule画面で行う（案A、2026-08-03決定）。
 // この画面は対象日を選び、既に登録済みのトラック構成を確認したうえで配送先・荷物の
 // 割当画面（/plans/[id]）へ進むための入口に過ぎない。DBには何も書き込まない。
-export default function NewPlanPage() {
+function NewPlanPageContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const initialDate = searchParams.get('date') || format(new Date(), 'yyyy-MM-dd');
@@ -337,5 +337,14 @@ export default function NewPlanPage() {
         </div>
       </div>
     </div>
+  );
+}
+
+// useSearchParams を使う画面は、本番の組み立て（next build）で事前描画できるよう Suspense で囲む必要がある
+export default function NewPlanPage() {
+  return (
+    <Suspense>
+      <NewPlanPageContent />
+    </Suspense>
   );
 }

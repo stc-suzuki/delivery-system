@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useState, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { Truck as TruckIcon } from 'lucide-react';
 import PageHeader from '@/components/ui/PageHeader';
@@ -42,7 +42,7 @@ const DEFAULT_HORIZON_DAYS = 10;
 // /plans/new・/plans/[id] にあったトラック選択処理をここへ切り出したもの。保存は既存の
 // /api/plans/batch をそのまま利用する（PENDINGルートだけを対象に追加・更新・削除する。
 // 稼働中・完了済みルートは変更されず、使用中のトラック・ドライバーとして空き判定にのみ反映される）
-export default function TruckSchedulePage() {
+function TruckSchedulePageContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const initialDate = searchParams.get('date') || format(new Date(), 'yyyy-MM-dd');
@@ -480,5 +480,14 @@ export default function TruckSchedulePage() {
       </div>
       </div>
     </div>
+  );
+}
+
+// useSearchParams を使う画面は、本番の組み立て（next build）で事前描画できるよう Suspense で囲む必要がある
+export default function TruckSchedulePage() {
+  return (
+    <Suspense>
+      <TruckSchedulePageContent />
+    </Suspense>
   );
 }

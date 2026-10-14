@@ -5,6 +5,9 @@ import { checkCapacityOverflow } from '@/lib/loadCapacity';
 import { computeDayTimeOverflow, DayRouteInput } from '@/lib/dayTimeOverflow';
 import { PoolStopInput } from '@/lib/loadAssignment';
 
+// 引数を取らないGETは、本番の組み立て（next build）時に結果が固定されてしまうため、毎回DBから取得させる
+export const dynamic = 'force-dynamic';
+
 // 配送管理者向け：本日から「配車計画の先行登録可能日数」（SystemSetting.truckScheduleHorizonDays）分の
 // 各日について、容積超過・時間超過の状況を一覧で見せる。/pool（1日ずつ確認する画面）を補完する俯瞰用エンドポイント。
 // 判定ロジック自体は/api/poolのGETと同じ（loadCapacity.ts / dayTimeOverflow.ts）だが、

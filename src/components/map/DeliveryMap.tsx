@@ -6,7 +6,7 @@ import 'leaflet/dist/leaflet.css';
 import { TOCHIGI_DEPOT } from '@/lib/routeOptimizer';
 
 // Leaflet のデフォルトアイコン画像パス修正
-delete (L.Icon.Default.prototype as any)._getIconUrl;
+delete (L.Icon.Default.prototype as unknown as { _getIconUrl?: unknown })._getIconUrl;
 L.Icon.Default.mergeOptions({
   iconRetinaUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon-2x.png',
   iconUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon.png',

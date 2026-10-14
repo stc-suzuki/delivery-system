@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useSession } from 'next-auth/react';
 import {
@@ -133,7 +133,7 @@ function todayStr() {
   return format(new Date(), 'yyyy-MM-dd');
 }
 
-export default function PlansPage() {
+function PlansPageContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const { data: session } = useSession();
@@ -418,5 +418,14 @@ export default function PlansPage() {
         )}
       </div>
     </div>
+  );
+}
+
+// useSearchParams を使う画面は、本番の組み立て（next build）で事前描画できるよう Suspense で囲む必要がある
+export default function PlansPage() {
+  return (
+    <Suspense>
+      <PlansPageContent />
+    </Suspense>
   );
 }
