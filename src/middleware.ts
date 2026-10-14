@@ -61,7 +61,9 @@ export async function middleware(req: NextRequest) {
       return NextResponse.json({ error: 'ログインが必要です' }, { status: 401 });
     }
     const loginUrl = new URL('/login', req.url);
-    loginUrl.searchParams.set('callbackUrl', req.url);
+    // req.urlはカスタムサーバーの待ち受け設定（HOSTNAME、既定0.0.0.0）でホスト部分が組み立てられるため、
+    // そのまま渡すと「http://0.0.0.0:3000/...」になる。ホストを含まない相対パスで渡す
+    loginUrl.searchParams.set('callbackUrl', `${req.nextUrl.pathname}${req.nextUrl.search}`);
     return NextResponse.redirect(loginUrl);
   }
 

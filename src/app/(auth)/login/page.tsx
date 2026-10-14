@@ -25,8 +25,18 @@ export default function LoginPage() {
       setError('名前またはパスワードが正しくありません');
       return;
     }
-    router.push('/dashboard');
+    router.push(callbackPath());
     router.refresh();
+  }
+
+  // ログイン前に開こうとしていた画面へ戻る。ミドルウェアが付けるcallbackUrlは「/plans/xxx?date=...」の
+  // ような相対パス。外部サイトへ飛ばされないよう、「/」始まり（「//」始まりは除く）の場合だけ使う
+  function callbackPath(): string {
+    const callbackUrl = new URLSearchParams(window.location.search).get('callbackUrl');
+    if (callbackUrl && callbackUrl.startsWith('/') && !callbackUrl.startsWith('//')) {
+      return callbackUrl;
+    }
+    return '/dashboard';
   }
 
   return (
