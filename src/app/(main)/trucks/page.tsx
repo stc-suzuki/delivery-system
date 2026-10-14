@@ -18,7 +18,7 @@ type Truck = {
   defaultDriverId: string | null;
 };
 
-type Driver = { id: string; name: string; type: 'FIXED_ROUTE' | 'REGULAR' | 'SALES' };
+type Driver = { id: string; name: string; type: 'FIXED_ROUTE' | 'REGULAR' | 'SALES'; status: 'ACTIVE' | 'INACTIVE' };
 
 const DRIVER_TYPE_LABELS: Record<Driver['type'], string> = {
   FIXED_ROUTE: '固定',
@@ -211,11 +211,14 @@ export default function TrucksPage() {
               className="rounded border border-gray-300 px-3 py-2 text-sm"
             >
               <option value="">デフォルトドライバー（任意）</option>
-              {drivers.map(d => (
-                <option key={d.id} value={d.id}>
-                  {d.name}（{DRIVER_TYPE_LABELS[d.type]}）
-                </option>
-              ))}
+              {/* 削除済み（INACTIVE）のドライバーは選択肢に出さない。ただし編集中のトラックに既に設定されている場合だけは、空欄に見えないよう残す */}
+              {drivers
+                .filter(d => d.status === 'ACTIVE' || d.id === defaultDriverId)
+                .map(d => (
+                  <option key={d.id} value={d.id}>
+                    {d.name}（{DRIVER_TYPE_LABELS[d.type]}）{d.status === 'INACTIVE' ? '※削除済み' : ''}
+                  </option>
+                ))}
             </select>
             <input
               type="number"
