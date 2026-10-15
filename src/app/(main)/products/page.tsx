@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import { Boxes } from 'lucide-react';
 import PageHeader from '@/components/ui/PageHeader';
+import { useDialog } from '@/components/ui/DialogProvider';
 
 type Product = {
   id: string;
@@ -13,6 +14,7 @@ type Product = {
 };
 
 export default function ProductsPage() {
+  const { confirmDialog, warnDialog } = useDialog();
   const [products, setProducts] = useState<Product[]>([]);
   const [name, setName] = useState('');
   const [width, setWidth] = useState('');
@@ -21,6 +23,7 @@ export default function ProductsPage() {
   const [error, setError] = useState('');
   const [saving, setSaving] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
 
   async function fetchProducts() {
     const res = await fetch('/api/products');
@@ -67,6 +70,22 @@ export default function ProductsPage() {
       setError(err instanceof Error ? err.message : '保存に失敗しました');
     } finally {
       setSaving(false);
+    }
+  }
+
+  async function handleDelete(p: Product) {
+    if (!(await confirmDialog(`「${p.name}」を削除しますか？この操作は取り消せません。`, { variant: 'danger' }))) return;
+    setDeletingId(p.id);
+    try {
+      const res = await fetch(`/api/products/${p.id}`, { method: 'DELETE' });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error);
+      if (editingId === p.id) resetForm();
+      fetchProducts();
+    } catch (err) {
+      await warnDialog(err instanceof Error ? err.message : '削除に失敗しました', { title: '削除できませんでした' });
+    } finally {
+      setDeletingId(null);
     }
   }
 
@@ -150,9 +169,16 @@ export default function ProductsPage() {
                 <td className="px-4 py-2">{p.name}</td>
                 <td className="px-4 py-2">{p.width}×{p.depth}×{p.height}m</td>
                 <td className="px-4 py-2">{(p.width * p.depth * p.height).toFixed(2)}m3</td>
-                <td className="px-4 py-2">
+                <td className="flex gap-3 px-4 py-2">
                   <button onClick={() => startEdit(p)} className="text-blue-600 hover:underline">
                     編集
+                  </button>
+                  <button
+                    onClick={() => handleDelete(p)}
+                    disabled={deletingId === p.id}
+                    className="text-red-500 hover:underline disabled:opacity-50"
+                  >
+                    {deletingId === p.id ? '削除中...' : '削除'}
                   </button>
                 </td>
               </tr>
