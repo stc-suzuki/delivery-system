@@ -22,6 +22,14 @@ type Location = {
 
 type BulkResult = { success: number; failed: number; errors: string[] };
 
+// formattedAddressは国土地理院の住所検索で一致した場所の名前で、番地まで一致しないと
+// 町名や市までしか返らない（その場合、地図上の位置もその町・市の代表地点になる）。
+// 一致した名前に番地の数字や丁目が無く、入力した住所と違う場合は「おおよその位置」とみなす
+function isApproximateMatch(loc: Location): boolean {
+  if (!loc.formattedAddress || loc.formattedAddress === loc.address) return false;
+  return !/[0-9０-９]|丁目|番/.test(loc.formattedAddress);
+}
+
 export default function LocationsPage() {
   const { confirmDialog, warnDialog } = useDialog();
   const [locations, setLocations] = useState<Location[]>([]);
@@ -306,7 +314,12 @@ export default function LocationsPage() {
             {locations.map(loc => (
               <tr key={loc.id}>
                 <td className="px-4 py-2">{loc.name}</td>
-                <td className="px-4 py-2">{loc.formattedAddress ?? loc.address}</td>
+                <td className="px-4 py-2">
+                  {loc.address}
+                  {isApproximateMatch(loc) && (
+                    <p className="text-xs text-amber-700">地図上の位置は「{loc.formattedAddress}」付近（番地まで特定できませんでした）</p>
+                  )}
+                </td>
                 <td className="px-4 py-2">{loc.phone ?? '-'}</td>
                 <td className="px-4 py-2">{new Date(loc.createdAt).toLocaleDateString('ja-JP')}</td>
                 <td className="flex gap-3 px-4 py-2">
