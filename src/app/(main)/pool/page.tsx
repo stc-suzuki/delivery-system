@@ -459,7 +459,11 @@ function PoolPageContent() {
       if (data.notSaved && data.notSaved.length > 0) {
         await warnDialog(
           data.notSaved.map(s => `${s.locationName}: ${s.reason}`),
-          { title: '以下の配送先は保存されませんでした' }
+          {
+            title: '以下の配送先は保存されませんでした',
+            // このダイアログを閉じると下のfetchPoolで画面全体を最新の内容に読み込み直す
+            footer: '画面は最新の内容に更新されます。保存されなかった配送先は、内容を確かめて必要なら入力し直してください。それ以外の配送先は保存されています。',
+          }
         );
       }
       setSaved(true);

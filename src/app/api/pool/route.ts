@@ -206,10 +206,10 @@ export async function PUT(req: NextRequest) {
 
     const notSaved: NotSavedEntry[] = [];
 
+    // 画面は保存のあと必ず最新の内容を読み込み直すため、利用者に再読み込みは求めない
+    // （「画面は最新の内容に更新されています」の案内は画面側でダイアログの下にまとめて出す）
     const conflictReason = (updatedByName: string | null, action: '更新' | '削除'): string =>
-      updatedByName
-        ? `${updatedByName}さんが${action}したため保存できませんでした。再読み込みして確認してください`
-        : `他の人が${action}したため保存できませんでした。再読み込みして確認してください`;
+      `${updatedByName ? `${updatedByName}さん` : '他の人'}が先に${action}していたため、この配送先の変更は保存されませんでした`;
 
     for (const item of add) {
       const locationName = locationNameById.get(item.locationId) ?? item.locationId;
@@ -258,7 +258,7 @@ export async function PUT(req: NextRequest) {
       const existing = touchedStopById.get(item.stopId);
       const locationName = existing?.location.name ?? item.stopId;
       if (!existing) {
-        notSaved.push({ locationName, reason: 'この配送先は既に削除されているため保存できませんでした。再読み込みして確認してください' });
+        notSaved.push({ locationName, reason: 'この配送先は既に削除されていたため、変更は保存されませんでした' });
         continue;
       }
       if (existing.routeId !== null) {
