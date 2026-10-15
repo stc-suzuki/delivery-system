@@ -7,11 +7,12 @@
   --foreground: #171717;
 
   /* 画面のカード配色（tailwind.config.tsのpanel・panel-line・heading・brand）。
-     配色を変えるときはこの4つの値だけを変える。案01「濃紺トラスト」 */
-  --panel: #F2F5F9;      /* カードの背景 */
-  --panel-line: #E5EAF2; /* カードの枠線・進捗バーの下地 */
-  --heading: #1B2333;    /* 見出しの文字 */
-  --brand: #1F3A63;      /* アクセント（進捗バー） */
+     配色を変えるときはこの4つの値だけを変える。案04「藍磁器」（2026-10-15〜）。
+     案01「濃紺トラスト」に戻す場合は #F2F5F9 / #E5EAF2 / #1B2333 / #1F3A63 */
+  --panel: #EFF2F8;      /* カードの背景 */
+  --panel-line: #E0E7F2; /* カードの枠線・進捗バーの下地 */
+  --heading: #202B3A;    /* 見出しの文字 */
+  --brand: #2A4C7A;      /* アクセント（進捗バー） */
 }
 
 @media (prefers-color-scheme: dark) {
