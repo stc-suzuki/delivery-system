@@ -6,6 +6,9 @@ export type BulkLocationResult = {
   errors: string[];
 };
 
+// CSV一括登録の結果（配送先・商品で共通の形）
+export type BulkImportResult = BulkLocationResult;
+
 export type OptimizeRequest = {
   locationIds: string[];
   truckIds: string[];

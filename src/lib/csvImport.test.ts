@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { decodeCsv, normalizeCsvHeader, parseLocationCsv } from './csvImport';
+import { decodeCsv, normalizeCsvHeader, parseDimension, parseLocationCsv, parseProductCsv } from './csvImport';
 
 // 「テスト」をShift_JISで表したバイト列
 const SJIS_TEST = [0x83, 0x65, 0x83, 0x58, 0x83, 0x67];
@@ -63,5 +63,43 @@ describe('parseLocationCsv', () => {
   it('空のファイル・空行だけのファイルは0件', () => {
     expect(parseLocationCsv('')).toEqual([]);
     expect(parseLocationCsv('\r\n\r\n')).toEqual([]);
+  });
+});
+
+describe('parseProductCsv', () => {
+  it('商品マスタのExcelと同じ見出し（商品名,幅,奥行き,高さ,体積）なら体積の列は読まない', () => {
+    const rows = parseProductCsv('商品名,幅,奥行き,高さ,体積\r\n照明　他,0.5,0.5,0.1,0.025\r\n');
+    expect(rows).toEqual([{ rowNo: 2, name: '照明　他', width: '0.5', depth: '0.5', height: '0.1' }]);
+  });
+
+  it('見出しの順番が違っても見出しに従って読む', () => {
+    const rows = parseProductCsv('高さ,奥行き,幅,商品名\r\n0.1,2,0.3,材料\r\n');
+    expect(rows).toEqual([{ rowNo: 2, name: '材料', width: '0.3', depth: '2', height: '0.1' }]);
+  });
+
+  it('見出しが無ければ「商品名,幅,奥行き,高さ」の順として1行目から読む', () => {
+    const rows = parseProductCsv('ラック,1,1.5,0.1\r\nパイプ,0.8,4,0.1\r\n');
+    expect(rows).toEqual([
+      { rowNo: 1, name: 'ラック', width: '1', depth: '1.5', height: '0.1' },
+      { rowNo: 2, name: 'パイプ', width: '0.8', depth: '4', height: '0.1' },
+    ]);
+  });
+
+  it('空のファイルは0件', () => {
+    expect(parseProductCsv('')).toEqual([]);
+  });
+});
+
+describe('parseDimension', () => {
+  it('数値にする（全角数字も可）', () => {
+    expect(parseDimension('0.5')).toBe(0.5);
+    expect(parseDimension('１．２')).toBe(1.2);
+  });
+
+  it('空・0以下・数値でないものはnull', () => {
+    expect(parseDimension('')).toBeNull();
+    expect(parseDimension('0')).toBeNull();
+    expect(parseDimension('-1')).toBeNull();
+    expect(parseDimension('abc')).toBeNull();
   });
 });

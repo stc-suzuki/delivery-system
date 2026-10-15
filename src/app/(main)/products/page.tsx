@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import { Boxes } from 'lucide-react';
 import PageHeader from '@/components/ui/PageHeader';
 import { useDialog } from '@/components/ui/DialogProvider';
+import { BulkImportResult } from '@/types';
 
 type Product = {
   id: string;
@@ -24,6 +25,9 @@ export default function ProductsPage() {
   const [saving, setSaving] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [csvFile, setCsvFile] = useState<File | null>(null);
+  const [uploading, setUploading] = useState(false);
+  const [bulkResult, setBulkResult] = useState<BulkImportResult | null>(null);
 
   async function fetchProducts() {
     const res = await fetch('/api/products');
@@ -70,6 +74,33 @@ export default function ProductsPage() {
       setError(err instanceof Error ? err.message : '保存に失敗しました');
     } finally {
       setSaving(false);
+    }
+  }
+
+  async function handleBulkUpload() {
+    if (!csvFile) return;
+    setUploading(true);
+    setBulkResult(null);
+    try {
+      const formData = new FormData();
+      formData.append('file', csvFile);
+      let res: Response;
+      try {
+        res = await fetch('/api/products/bulk', { method: 'POST', body: formData });
+      } catch {
+        // ファイルを選んだ後にそのファイルを保存し直すと、ブラウザが送信を拒否し「Failed to fetch」になる
+        throw new Error(
+          'ファイルを送信できませんでした。ファイルを選んだ後に保存し直した場合は、もう一度ファイルを選んでからアップロードしてください'
+        );
+      }
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error);
+      setBulkResult(data);
+      fetchProducts();
+    } catch (err) {
+      setBulkResult({ success: 0, failed: 0, errors: [err instanceof Error ? err.message : '一括登録に失敗しました'] });
+    } finally {
+      setUploading(false);
     }
   }
 
@@ -151,6 +182,41 @@ export default function ProductsPage() {
             )}
           </div>
         </form>
+      </div>
+
+      {/* CSV一括登録 */}
+      <div className="rounded-lg border border-[#E5EAF2] bg-[#F2F5F9] p-4 shadow-sm">
+        <h2 className="mb-1 text-sm font-semibold text-gray-700">CSV一括登録（見出し：商品名,幅,奥行き,高さ）</h2>
+        <p className="mb-3 text-xs text-gray-500">
+          寸法はm単位。見出しが無い場合は「商品名,幅,奥行き,高さ」の順として読みます（体積などその後ろの列は読みません）。Excelで保存したCSV（Shift_JIS）・UTF-8のどちらでも読み込めます。同じ名前の商品が既にある行は登録しません。
+        </p>
+        <div className="flex items-center gap-3">
+          <input
+            type="file"
+            accept=".csv"
+            onChange={e => setCsvFile(e.target.files?.[0] ?? null)}
+            className="text-sm"
+          />
+          <button
+            onClick={handleBulkUpload}
+            disabled={!csvFile || uploading}
+            className="rounded bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50"
+          >
+            {uploading ? 'アップロード中...' : 'アップロード'}
+          </button>
+        </div>
+        {bulkResult && (
+          <div className="mt-3 text-sm">
+            <p>成功: {bulkResult.success}件 / 失敗: {bulkResult.failed}件</p>
+            {bulkResult.errors.length > 0 && (
+              <ul className="mt-1 max-h-32 list-disc overflow-y-auto pl-5 text-xs text-red-600">
+                {bulkResult.errors.map((e, i) => (
+                  <li key={i}>{e}</li>
+                ))}
+              </ul>
+            )}
+          </div>
+        )}
       </div>
 
       <div className="overflow-x-auto rounded-lg border border-[#E5EAF2] bg-[#F2F5F9] shadow-sm">
