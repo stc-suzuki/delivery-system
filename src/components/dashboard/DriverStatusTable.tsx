@@ -1,6 +1,5 @@
 'use client';
 
-import { Fragment } from 'react';
 import { ReturnStatusPill } from './ReturnStatus';
 
 type DriverRow = {
@@ -43,8 +42,8 @@ function formatTruckNumber(plateNo: string | null): string {
 }
 
 function StatusGroupTable({ status, group }: { status: DriverRow['status']; group: DriverRow[] }) {
-  // 配達完了の欄では、帰社途中か帰社済みかを各ドライバーの行の下に欄の幅いっぱいで出す
-  // （列として足すと、3列並びの狭い欄では名前・トラックが切れてしまうため）
+  // 配達完了の欄では、帰社途中か帰社済みかが一番知りたい情報のため、区分の列の代わりに「帰社」列を出し、
+  // ドライバー・トラック・帰社状況を1行に並べる（帰社の列は表示が切れない幅で固定し、狭い画面では名前を省略する）
   const showReturn = status === 'COMPLETED';
   return (
     <div className="rounded-lg border border-[#E5EAF2] bg-[#F2F5F9] p-4 shadow-sm">
@@ -61,41 +60,38 @@ function StatusGroupTable({ status, group }: { status: DriverRow['status']; grou
           <table className="w-full table-fixed text-left text-sm">
             <thead>
               <tr className="border-b border-gray-200 text-xs text-[#4B5563]">
-                <th className="w-1/2 py-1.5 pr-2 text-left font-normal">ドライバー</th>
-                <th className="w-1/4 py-1.5 pr-2 text-left font-normal">区分</th>
-                <th className="w-1/4 py-1.5 pr-2 text-left font-normal">トラック</th>
+                <th className={`${showReturn ? '' : 'w-1/2'} py-1.5 pr-2 text-left font-normal`}>ドライバー</th>
+                {!showReturn && <th className="w-1/4 py-1.5 pr-2 text-left font-normal">区分</th>}
+                <th className={`${showReturn ? 'w-[3.75rem]' : 'w-1/4'} py-1.5 pr-2 text-left font-normal`}>トラック</th>
+                {showReturn && <th className="w-[8.25rem] py-1.5 text-left font-normal">帰社</th>}
               </tr>
             </thead>
             <tbody>
               {group.map(driver => (
-                <Fragment key={driver.id}>
-                  <tr className={showReturn ? '' : 'border-b border-gray-100 last:border-0'}>
-                    <td className="py-1.5 pr-2 font-medium text-gray-800">
-                      <div className="flex items-center gap-1.5">
-                        <span className="truncate">{driver.name}</span>
-                        {status === 'IDLE' && driver.truck && (
-                          <span className="shrink-0 rounded-full bg-purple-100 px-1.5 py-0.5 text-[10px] font-medium text-purple-700">
-                            稼働前
-                          </span>
-                        )}
-                        {status === 'IN_PROGRESS' && driver.currentTrip && (
-                          <span className="shrink-0 rounded-full bg-blue-100 px-1.5 py-0.5 text-[10px] font-medium text-blue-700">
-                            {driver.currentTrip.index}/{driver.currentTrip.total}便
-                          </span>
-                        )}
-                      </div>
-                    </td>
-                    <td className="py-1.5 pr-2 text-gray-600">{TYPE_LABELS[driver.type]}</td>
-                    <td className="truncate py-1.5 pr-2 text-gray-600">{formatTruckNumber(driver.truck)}</td>
-                  </tr>
+                <tr key={driver.id} className="border-b border-gray-100 last:border-0">
+                  <td className="py-1.5 pr-2 font-medium text-gray-800">
+                    <div className="flex items-center gap-1.5">
+                      <span className="truncate">{driver.name}</span>
+                      {status === 'IDLE' && driver.truck && (
+                        <span className="shrink-0 rounded-full bg-purple-100 px-1.5 py-0.5 text-[10px] font-medium text-purple-700">
+                          稼働前
+                        </span>
+                      )}
+                      {status === 'IN_PROGRESS' && driver.currentTrip && (
+                        <span className="shrink-0 rounded-full bg-blue-100 px-1.5 py-0.5 text-[10px] font-medium text-blue-700">
+                          {driver.currentTrip.index}/{driver.currentTrip.total}便
+                        </span>
+                      )}
+                    </div>
+                  </td>
+                  {!showReturn && <td className="py-1.5 pr-2 text-gray-600">{TYPE_LABELS[driver.type]}</td>}
+                  <td className="truncate py-1.5 pr-2 text-gray-600">{formatTruckNumber(driver.truck)}</td>
                   {showReturn && (
-                    <tr className="border-b border-gray-100 last:border-0">
-                      <td colSpan={3} className="pb-2">
-                        <ReturnStatusPill returnedAt={driver.returnedAt} returnEta={driver.returnEta} />
-                      </td>
-                    </tr>
+                    <td className="py-1.5">
+                      <ReturnStatusPill returnedAt={driver.returnedAt} returnEta={driver.returnEta} />
+                    </td>
                   )}
-                </Fragment>
+                </tr>
               ))}
             </tbody>
           </table>
@@ -114,7 +110,7 @@ export default function DriverStatusTable({ drivers }: { drivers: DriverRow[] })
           ドライバーが登録されていません
         </p>
       ) : (
-        <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
+        <div className="grid grid-cols-1 gap-4 lg:grid-cols-2 xl:grid-cols-3">
           {STATUS_ORDER.map(status => (
             <StatusGroupTable
               key={status}
