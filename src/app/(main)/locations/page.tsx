@@ -123,7 +123,15 @@ export default function LocationsPage() {
     try {
       const formData = new FormData();
       formData.append('file', csvFile);
-      const res = await fetch('/api/locations/bulk', { method: 'POST', body: formData });
+      let res: Response;
+      try {
+        res = await fetch('/api/locations/bulk', { method: 'POST', body: formData });
+      } catch {
+        // ファイルを選んだ後にそのファイルを保存し直すと、ブラウザが送信を拒否し「Failed to fetch」になる
+        throw new Error(
+          'ファイルを送信できませんでした。ファイルを選んだ後に保存し直した場合は、もう一度ファイルを選んでからアップロードしてください'
+        );
+      }
       const data = await res.json();
       if (!res.ok) throw new Error(data.error);
       setBulkResult(data);

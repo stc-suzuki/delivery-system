@@ -1,12 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
-import Papa from 'papaparse';
 import { prisma } from '@/lib/prisma';
 import { geocodeAddress } from '@/lib/geocode';
 import { extractCity } from '@/lib/address';
 import { BulkLocationResult } from '@/types';
-import { decodeCsv, normalizeCsvHeader } from '@/lib/csvImport';
-
-type CsvRow = { name: string; address: string; phone?: string };
+import { decodeCsv, parseLocationCsv } from '@/lib/csvImport';
 
 export async function POST(req: NextRequest) {
   try {
@@ -18,21 +15,21 @@ export async function POST(req: NextRequest) {
 
     // file.text()はUTF-8決め打ちのため、ExcelのShift_JISのCSVが文字化けして住所が引けなかった
     const text = decodeCsv(new Uint8Array(await file.arrayBuffer()));
-    const parsed = Papa.parse<CsvRow>(text, {
-      header: true,
-      skipEmptyLines: true,
-      transformHeader: normalizeCsvHeader,
-      transform: value => value.trim(),
-    });
+    const rows = parseLocationCsv(text);
+    if (rows.length === 0) {
+      return NextResponse.json(
+        { error: 'CSVに登録するデータがありません（ファイルが空か、保存されていない可能性があります）' },
+        { status: 400 }
+      );
+    }
 
     const result: BulkLocationResult = { success: 0, failed: 0, errors: [] };
 
-    for (let index = 0; index < parsed.data.length; index++) {
-      const row = parsed.data[index];
-      const rowNo = index + 2; // ヘッダー行を考慮
+    for (const row of rows) {
+      const { rowNo } = row;
       try {
         if (!row.name || !row.address) {
-          throw new Error('name または address が未入力です');
+          throw new Error('名称または住所が未入力です');
         }
         const geo = await geocodeAddress(row.address);
         const city = extractCity(row.address);

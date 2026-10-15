@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { decodeCsv, normalizeCsvHeader } from './csvImport';
+import { decodeCsv, normalizeCsvHeader, parseLocationCsv } from './csvImport';
 
 // 「テスト」をShift_JISで表したバイト列
 const SJIS_TEST = [0x83, 0x65, 0x83, 0x58, 0x83, 0x67];
@@ -39,5 +39,29 @@ describe('normalizeCsvHeader', () => {
 
   it('知らない見出しは小文字にしてそのまま返す', () => {
     expect(normalizeCsvHeader('Memo')).toBe('memo');
+  });
+});
+
+describe('parseLocationCsv', () => {
+  it('見出しがあれば見出しに従って読む（列の順番が違っても良い）', () => {
+    const rows = parseLocationCsv('電話番号,住所,名称\r\n028-000-0000, 栃木県宇都宮市本町1-1 ,A商店\r\n');
+    expect(rows).toEqual([{ rowNo: 2, name: 'A商店', address: '栃木県宇都宮市本町1-1', phone: '028-000-0000' }]);
+  });
+
+  it('見出しが無ければ「名称,住所,電話番号」の順として1行目から読む', () => {
+    const rows = parseLocationCsv('AAA商事,栃木県鹿沼市朝日町123,0289-66-1234\r\nBBB建築,栃木県小山市片岡2-2-2,024-123-1111\r\n');
+    expect(rows).toEqual([
+      { rowNo: 1, name: 'AAA商事', address: '栃木県鹿沼市朝日町123', phone: '0289-66-1234' },
+      { rowNo: 2, name: 'BBB建築', address: '栃木県小山市片岡2-2-2', phone: '024-123-1111' },
+    ]);
+  });
+
+  it('電話番号の列が無くても読む', () => {
+    expect(parseLocationCsv('name,address\nA,住所1\n')).toEqual([{ rowNo: 2, name: 'A', address: '住所1', phone: '' }]);
+  });
+
+  it('空のファイル・空行だけのファイルは0件', () => {
+    expect(parseLocationCsv('')).toEqual([]);
+    expect(parseLocationCsv('\r\n\r\n')).toEqual([]);
   });
 });
