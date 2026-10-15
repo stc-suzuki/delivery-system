@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import { format } from 'date-fns';
 import { splitPlateNo } from '@/components/plans/DispatchGanttChart';
 import FuelIcon from '@/components/icons/FuelIcon';
+import { returnStatusOf } from './ReturnStatus';
 import {
   RouteOperationStatus,
   ROUTE_OPERATION_STATUS_LABELS as ROUTE_STATUS_LABELS,
@@ -31,6 +32,8 @@ type RouteSummary = {
   hasFuelLog: boolean;
   departureTime: string | null;
   returnedAt: string | null;
+  // 帰社途中（配達完了・帰社ボタン未押下）のルートだけ、本社に着く見込みの時刻が入る
+  returnEta: string | null;
   attentionScore: number;
   destinations: Destination[];
 };
@@ -157,14 +160,20 @@ export default function PlanSummaryList({ routes }: { routes: RouteSummary[] }) 
                   <span className={`shrink-0 rounded-full px-2 py-0.5 text-xs font-medium ${ROUTE_STATUS_STYLES[route.routeOperationStatus]}`}>
                     {ROUTE_STATUS_LABELS[route.routeOperationStatus]}
                   </span>
-                  {route.returnedAt && (
-                    <span className="shrink-0 rounded-full bg-blue-100 px-2 py-0.5 text-xs font-medium text-blue-700">
-                      帰社
-                    </span>
-                  )}
                 </div>
                 {route.note && <p className="mt-1 truncate text-xs text-[#4B5563]">{route.note}</p>}
               </button>
+
+              {isCompleted && (() => {
+                // 配達完了のカードは、帰社途中か帰社済みかをカード幅いっぱいの帯で示す
+                const { Icon, label, className } = returnStatusOf(route.returnedAt, route.returnEta);
+                return (
+                  <div className={`-mx-4 mt-3 flex items-center gap-1.5 px-4 py-1.5 text-xs font-medium ${className}`}>
+                    <Icon className="h-3.5 w-3.5" aria-hidden="true" />
+                    {label}
+                  </div>
+                );
+              })()}
 
               {route.destinations.length > 0 && (
                 <ul className="mt-3 max-h-40 space-y-1 overflow-y-auto border-t border-gray-100 pt-2">

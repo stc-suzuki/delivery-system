@@ -1,13 +1,17 @@
 'use client';
 
+import { Fragment } from 'react';
+import { ReturnStatusPill } from './ReturnStatus';
+
 type DriverRow = {
   id: string;
   name: string;
   type: 'FIXED_ROUTE' | 'REGULAR' | 'SALES';
   status: 'IN_PROGRESS' | 'IDLE' | 'COMPLETED';
   truck: string | null;
-  // 配達完了グループ内で「帰社済み」を示すバッジ表示用。配達完了以外では未使用
+  // 配達完了グループの「帰社」列（帰社済みの時刻／帰社途中の帰社予定時刻）の表示用。配達完了以外では未使用
   returnedAt: string | null;
+  returnEta: string | null;
   // 進行中グループ内で「N/M便」を示すバッジ表示用。便が2件以上あるルートのみ設定される
   currentTrip: { index: number; total: number } | null;
 };
@@ -39,6 +43,9 @@ function formatTruckNumber(plateNo: string | null): string {
 }
 
 function StatusGroupTable({ status, group }: { status: DriverRow['status']; group: DriverRow[] }) {
+  // 配達完了の欄では、帰社途中か帰社済みかを各ドライバーの行の下に欄の幅いっぱいで出す
+  // （列として足すと、3列並びの狭い欄では名前・トラックが切れてしまうため）
+  const showReturn = status === 'COMPLETED';
   return (
     <div className="rounded-lg border border-[#E5EAF2] bg-[#F2F5F9] p-4 shadow-sm">
       <div className="mb-2 flex items-center gap-2">
@@ -61,30 +68,34 @@ function StatusGroupTable({ status, group }: { status: DriverRow['status']; grou
             </thead>
             <tbody>
               {group.map(driver => (
-                <tr key={driver.id} className="border-b border-gray-100 last:border-0">
-                  <td className="py-1.5 pr-2 font-medium text-gray-800">
-                    <div className="flex items-center gap-1.5">
-                      <span className="truncate">{driver.name}</span>
-                      {status === 'IDLE' && driver.truck && (
-                        <span className="shrink-0 rounded-full bg-purple-100 px-1.5 py-0.5 text-[10px] font-medium text-purple-700">
-                          稼働前
-                        </span>
-                      )}
-                      {status === 'COMPLETED' && driver.returnedAt && (
-                        <span className="shrink-0 rounded-full bg-blue-100 px-1.5 py-0.5 text-[10px] font-medium text-blue-700">
-                          帰社
-                        </span>
-                      )}
-                      {status === 'IN_PROGRESS' && driver.currentTrip && (
-                        <span className="shrink-0 rounded-full bg-blue-100 px-1.5 py-0.5 text-[10px] font-medium text-blue-700">
-                          {driver.currentTrip.index}/{driver.currentTrip.total}便
-                        </span>
-                      )}
-                    </div>
-                  </td>
-                  <td className="py-1.5 pr-2 text-gray-600">{TYPE_LABELS[driver.type]}</td>
-                  <td className="truncate py-1.5 pr-2 text-gray-600">{formatTruckNumber(driver.truck)}</td>
-                </tr>
+                <Fragment key={driver.id}>
+                  <tr className={showReturn ? '' : 'border-b border-gray-100 last:border-0'}>
+                    <td className="py-1.5 pr-2 font-medium text-gray-800">
+                      <div className="flex items-center gap-1.5">
+                        <span className="truncate">{driver.name}</span>
+                        {status === 'IDLE' && driver.truck && (
+                          <span className="shrink-0 rounded-full bg-purple-100 px-1.5 py-0.5 text-[10px] font-medium text-purple-700">
+                            稼働前
+                          </span>
+                        )}
+                        {status === 'IN_PROGRESS' && driver.currentTrip && (
+                          <span className="shrink-0 rounded-full bg-blue-100 px-1.5 py-0.5 text-[10px] font-medium text-blue-700">
+                            {driver.currentTrip.index}/{driver.currentTrip.total}便
+                          </span>
+                        )}
+                      </div>
+                    </td>
+                    <td className="py-1.5 pr-2 text-gray-600">{TYPE_LABELS[driver.type]}</td>
+                    <td className="truncate py-1.5 pr-2 text-gray-600">{formatTruckNumber(driver.truck)}</td>
+                  </tr>
+                  {showReturn && (
+                    <tr className="border-b border-gray-100 last:border-0">
+                      <td colSpan={3} className="pb-2">
+                        <ReturnStatusPill returnedAt={driver.returnedAt} returnEta={driver.returnEta} />
+                      </td>
+                    </tr>
+                  )}
+                </Fragment>
               ))}
             </tbody>
           </table>

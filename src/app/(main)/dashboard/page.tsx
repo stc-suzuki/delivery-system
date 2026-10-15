@@ -28,6 +28,7 @@ type RouteSummary = {
   hasFuelLog: boolean;
   departureTime: string | null;
   returnedAt: string | null;
+  returnEta: string | null;
   attentionScore: number;
   destinations: Destination[];
 };
@@ -39,6 +40,7 @@ type DriverRow = {
   status: 'IN_PROGRESS' | 'IDLE' | 'COMPLETED';
   truck: string | null;
   returnedAt: string | null;
+  returnEta: string | null;
   currentTrip: { index: number; total: number } | null;
 };
 

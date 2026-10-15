@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { startOfDay, endOfDay, subDays, format } from 'date-fns';
 import { computeRouteOperationStatus } from '@/lib/routeOperationStatus';
+import { estimateReturnEta } from '@/lib/returnEstimate';
 
 export const dynamic = 'force-dynamic';
 
@@ -26,6 +27,27 @@ export async function GET(request: NextRequest) {
         trips: { orderBy: { tripIndex: 'asc' } },
       },
     });
+
+    const settings = await prisma.systemSetting.upsert({ where: { id: 'default' }, update: {}, create: { id: 'default' } });
+
+    // 配達をすべて終えて帰社途中（帰社ボタンがまだ押されていない）のルートだけ、本社に着く見込みの時刻を求める
+    const returnEtaOf = (route: (typeof todayRoutes)[number]) =>
+      route.status === 'COMPLETED' && !route.returnedAt
+        ? estimateReturnEta(
+            route.stops.map(s => ({
+              lat: s.location.lat,
+              lng: s.location.lng,
+              arrivedAt: s.arrivedAt,
+              scheduledTime: s.scheduledTime,
+            })),
+            {
+              depot: { lat: settings.depotLat, lng: settings.depotLng },
+              lunchBreakStart: settings.lunchBreakStart,
+              lunchBreakEnd: settings.lunchBreakEnd,
+              stopDurationMinutes: settings.defaultStopDurationMinutes,
+            }
+          )
+        : null;
 
     const routeCount = todayRoutes.length;
     const completedCount = todayRoutes.filter(r => r.status === 'COMPLETED').length;
@@ -63,6 +85,7 @@ export async function GET(request: NextRequest) {
       hasFuelLog: r.fuelLogs.length > 0,
       departureTime: r.departureTime,
       returnedAt: r.returnedAt,
+      returnEta: returnEtaOf(r),
       attentionScore: routeAttentionScore(r),
       // 便が2件以上あるルートだけ、停車地に便番号を添える（1便のみ・便を使わないルートでは
       // 表示する意味が無いため、tripIndexをnullのままにしてダッシュボード側で非表示にする）
@@ -121,8 +144,9 @@ export async function GET(request: NextRequest) {
         type: d.type,
         status: driverStatusLabel(route),
         truck: route?.truck.plateNo ?? null,
-        // 配達完了グループ内で「帰社済み」を示すバッジ表示用
+        // 配達完了グループ内で「帰社済み（時刻）」「帰社途中（帰社予定時刻）」を表示する用
         returnedAt: route?.returnedAt ?? null,
+        returnEta: route ? returnEtaOf(route) : null,
         // 進行中グループ内で「N/M便」を示すバッジ表示用
         currentTrip: currentTripInfo(route),
       };
