@@ -3,7 +3,7 @@ import { prisma } from '@/lib/prisma';
 import { canEditRoute, getEditHorizonDays } from '@/lib/planEditPolicy';
 import { orderWithTimeBudget, estimateStopTimes, skipLunchBreak, addTimeOutsideLunch, haversine, AVERAGE_SPEED_KMH } from '@/lib/routeOptimizer';
 import { validatePackagesInput, MAX_STOPS_PER_ROUTE, PackageInput } from '@/lib/planValidation';
-import { checkCapacityOverflow, fitsBed, truckBed } from '@/lib/loadCapacity';
+import { checkCapacityOverflow, effectiveCapacityM3, fitsBed, truckBed } from '@/lib/loadCapacity';
 
 const toHHMM = (d: Date) => `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
 
@@ -338,10 +338,13 @@ export async function POST(
       ...remainingStops.map(s => sumPackageVolume(s.packages)),
       ...timed.map(stop => sumPackageVolume(stop.effectivePackages)),
     ];
-    const capacityCheck = checkCapacityOverflow(truck?.capacityM3, stopVolumes);
-    if (capacityCheck.overCapacity) {
+    // 積み込み時の隙間を見込み、容積上限×積載利用率（システム設定）を上限として判定する
+    const capacityLimit = effectiveCapacityM3(truck?.capacityM3, settings.loadUtilizationPercent);
+    const capacityCheck = checkCapacityOverflow(capacityLimit, stopVolumes);
+    if (capacityCheck.overCapacity && capacityLimit != null) {
+      const utilizationNote = settings.loadUtilizationPercent < 100 ? `・積載利用率${settings.loadUtilizationPercent}%` : '';
       warnings.push(
-        `${truck?.plateNo ?? route.truckId}: 積載体積が上限を超えている可能性があります（合計${capacityCheck.totalVolume.toFixed(2)}m3 / 上限${truck?.capacityM3}m3）`
+        `${truck?.plateNo ?? route.truckId}: 積載体積が上限を超えている可能性があります（合計${capacityCheck.totalVolume.toFixed(2)}m3 / 上限${capacityLimit.toFixed(2)}m3${utilizationNote}）`
       );
     }
     warnings.push(

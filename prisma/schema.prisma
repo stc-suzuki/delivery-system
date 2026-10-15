@@ -27,7 +27,7 @@ model Truck {
   plateNo     String      @unique
   model       String
   capacityKg  Int
-  capacityM3  Float?      // 積載可能容積（m3）。未設定の場合は積載割当エンジンの容積チェック対象外
+  capacityM3  Float?      // 積載可能容積（m3）。荷台寸法（幅×奥行き×高さ）から自動計算して保存する（2026-10-15〜、画面・APIで荷台寸法は必須）。nullは必須化前の古いデータのみで、容積チェックの対象外
   bedWidth    Float?      // 荷台内寸・幅（m）。未設定の場合はSIZE_OVERチェック対象外
   bedDepth    Float?      // 荷台内寸・奥行き（m）
   bedHeight   Float?      // 荷台内寸・高さ（m）
@@ -261,8 +261,9 @@ model SystemSetting {
   truckScheduleHorizonDays   Int      @default(10) // 配車計画の先行登録可能日数。トラック稼働登録画面・配送計画の作成画面の両方で、本日から何日先まで登録・編集できるかを共通で制御する（1〜30）
   excludeWeekendsAndHolidays Boolean  @default(false) // trueなら土日・祝日を配送除外日とし、トラック稼働登録できなくする
   // 実際にトラックへ積むと生じるデッドスペース（隙間）を踏まえた積載利用率（%、10〜100）。
-  // /poolの容積超過チェックで、トラック容量合計に (loadUtilizationPercent/100) を掛けた
-  // 実効容量と比較する。100ならキチキチ（容量そのまま）、値を下げるほど余裕を持たせた判定になる
+  // トラックの容積上限に (loadUtilizationPercent/100) を掛けた値を、1台・1便あたりに積める量とする。
+  // AI提案・積載率表示・容積超過警告・/poolと/capacity-overviewの判定のすべてで使う（lib/loadCapacityのeffectiveCapacityM3）。
+  // 100ならキチキチ（荷台いっぱい）、値を下げるほど余裕を持たせた判定になる
   loadUtilizationPercent     Int      @default(100)
   // 複数便対応：1日あたりトラック1台が本社と何往復できるかの想定値。/poolの容積超過チェックで、
   // トラック容量合計にこの値を掛けたものをその日の実効容量とする（1台＝1回の積み込みで1日分を

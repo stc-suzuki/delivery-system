@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { format } from 'date-fns';
 import { prisma } from '@/lib/prisma';
-import { clampCapacityToBed } from '@/lib/loadCapacity';
+import { resolveTruckBed } from '@/lib/loadCapacity';
 
 export async function PATCH(
   req: NextRequest,
@@ -9,7 +9,8 @@ export async function PATCH(
 ) {
   try {
     const body = await req.json();
-    const { plateNo, model, capacityKg, capacityM3, bedWidth, bedDepth, bedHeight, status, defaultDriverId } = body;
+    // 容積上限（capacityM3）はリクエストで受け取らず、荷台寸法から計算する
+    const { plateNo, model, capacityKg, bedWidth, bedDepth, bedHeight, status, defaultDriverId } = body;
 
     const existing = await prisma.truck.findUnique({ where: { id: params.id } });
     if (!existing) {
@@ -19,15 +20,15 @@ export async function PATCH(
       return NextResponse.json({ error: '廃車済みのトラックは編集できません' }, { status: 400 });
     }
 
-    const nextBedWidth = bedWidth !== undefined ? (bedWidth === null ? null : Number(bedWidth)) : existing.bedWidth;
-    const nextBedDepth = bedDepth !== undefined ? (bedDepth === null ? null : Number(bedDepth)) : existing.bedDepth;
-    const nextBedHeight = bedHeight !== undefined ? (bedHeight === null ? null : Number(bedHeight)) : existing.bedHeight;
-    const nextBed =
-      nextBedWidth != null && nextBedDepth != null && nextBedHeight != null
-        ? { width: nextBedWidth, depth: nextBedDepth, height: nextBedHeight }
-        : null;
-    const nextCapacityM3 = capacityM3 !== undefined ? (capacityM3 === null ? null : Number(capacityM3)) : existing.capacityM3;
-    const clampedCapacityM3 = clampCapacityToBed(nextCapacityM3, nextBed);
+    // 荷台寸法は送られてこなかった項目を現在の値で補い、更新後の3辺がそろっているかを確認する
+    const resolved = resolveTruckBed({
+      bedWidth: bedWidth !== undefined ? bedWidth : existing.bedWidth,
+      bedDepth: bedDepth !== undefined ? bedDepth : existing.bedDepth,
+      bedHeight: bedHeight !== undefined ? bedHeight : existing.bedHeight,
+    });
+    if ('error' in resolved) {
+      return NextResponse.json({ error: resolved.error }, { status: 400 });
+    }
 
     const truck = await prisma.truck.update({
       where: { id: params.id },
@@ -35,12 +36,10 @@ export async function PATCH(
         ...(plateNo !== undefined && { plateNo }),
         ...(model !== undefined && { model }),
         ...(capacityKg !== undefined && { capacityKg: Number(capacityKg) }),
-        ...((capacityM3 !== undefined || bedWidth !== undefined || bedDepth !== undefined || bedHeight !== undefined) && {
-          capacityM3: clampedCapacityM3,
-        }),
-        ...(bedWidth !== undefined && { bedWidth: bedWidth === null ? null : Number(bedWidth) }),
-        ...(bedDepth !== undefined && { bedDepth: bedDepth === null ? null : Number(bedDepth) }),
-        ...(bedHeight !== undefined && { bedHeight: bedHeight === null ? null : Number(bedHeight) }),
+        capacityM3: resolved.capacityM3,
+        bedWidth: resolved.bed.width,
+        bedDepth: resolved.bed.depth,
+        bedHeight: resolved.bed.height,
         ...(status !== undefined && { status }),
         ...(defaultDriverId !== undefined && { defaultDriverId: defaultDriverId || null }),
       },

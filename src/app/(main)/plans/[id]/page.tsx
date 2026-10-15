@@ -15,6 +15,7 @@ import {
   ROUTE_OPERATION_STATUS_STYLES,
 } from '@/lib/routeOperationStatus';
 import { WARNING_USAGE_RATIO } from '@/lib/capacityOverviewStatus';
+import { effectiveCapacityM3 } from '@/lib/loadCapacity';
 import { DRIVER_TYPE_LABELS } from '@/lib/driverSchedule';
 import { useDialog } from '@/components/ui/DialogProvider';
 import type { DriverType, RouteStatus } from '@prisma/client';
@@ -154,6 +155,8 @@ export default function PlanDetailPage() {
   // 新規作成ではなく既存のプール停車地を再利用してもらう（重複停車地の防止）
   const [poolStopIdByLocationId, setPoolStopIdByLocationId] = useState<Record<string, string>>({});
   const [editHorizonDays, setEditHorizonDays] = useState(10);
+  // 積載率の表示は「容積上限×積載利用率（システム設定）」を100%とする（AI提案・荷物受付の判定と同じ基準）
+  const [loadUtilizationPercent, setLoadUtilizationPercent] = useState(100);
 
   // 配送先の割当（稼働開始前のみ使用。プールはルートに非依存＝/api/poolから取得）
   const [poolStops, setPoolStops] = useState<ApiStop[]>([]);
@@ -239,6 +242,7 @@ export default function PlanDetailPage() {
     setDrivers(await driverRes.json());
     const settingsData = await settingsRes.json();
     setEditHorizonDays(settingsData.truckScheduleHorizonDays ?? 10);
+    setLoadUtilizationPercent(settingsData.loadUtilizationPercent ?? 100);
 
     const started = anchorData.status !== 'PENDING';
     const assignmentRoutes = await resolveAssignmentRoutes(anchorData);
@@ -963,7 +967,7 @@ export default function PlanDetailPage() {
               </div>
               {siblingRoutes[0] && (() => {
                 const used = routeLoad(siblingRoutes[0]);
-                const capacity = siblingRoutes[0].truck.capacityM3;
+                const capacity = effectiveCapacityM3(siblingRoutes[0].truck.capacityM3, loadUtilizationPercent);
                 const ratio = capacity ? used / capacity : null;
                 return (
                   <div className="mt-2 max-w-xs">
@@ -1002,7 +1006,7 @@ export default function PlanDetailPage() {
                 {siblingRoutes.map(r => {
                   const isCurrent = r.id === anchorRouteId;
                   const used = routeLoad(r);
-                  const capacity = r.truck.capacityM3;
+                  const capacity = effectiveCapacityM3(r.truck.capacityM3, loadUtilizationPercent);
                   const ratio = capacity ? used / capacity : null;
                   const lastTrip = r.trips[r.trips.length - 1];
                   const lastTripStopCount = r.stops.filter(s => s.tripId === lastTrip.id).length;
@@ -1349,7 +1353,7 @@ export default function PlanDetailPage() {
                     .map(r => {
                       const { prefix, lastFour } = splitPlateNo(r.truck.plateNo);
                       const used = routeLoad(r);
-                      const capacity = r.truck.capacityM3;
+                      const capacity = effectiveCapacityM3(r.truck.capacityM3, loadUtilizationPercent);
                       return (
                       <div key={r.id} className="mb-2 rounded bg-white p-2">
                         <div className="flex items-center justify-between">

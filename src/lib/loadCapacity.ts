@@ -43,15 +43,34 @@ export function bedVolume(bed: Dimensions | null): number | null {
   return bed.width * bed.depth * bed.height;
 }
 
-/** capacityM3が荷台の物理容積を超えている場合、荷台容積に補正する */
-export function clampCapacityToBed(
-  capacityM3: number | null | undefined,
-  bed: Dimensions | null
-): number | null | undefined {
-  if (capacityM3 == null) return capacityM3;
-  const maxVolume = bedVolume(bed);
-  if (maxVolume == null) return capacityM3;
-  return Math.min(capacityM3, maxVolume);
+/**
+ * トラック登録・更新時の荷台寸法を検証し、容積上限（capacityM3）を荷台の物理容積から求める。
+ * 容積上限は手入力させず常に荷台寸法から計算する（積み込み時の隙間によるゆとりは、
+ * システム設定の積載利用率で全トラック一括に持たせる）。荷台寸法はいずれも必須で、0より大きい数値
+ */
+export function resolveTruckBed(
+  input: { bedWidth: unknown; bedDepth: unknown; bedHeight: unknown }
+): { bed: Dimensions; capacityM3: number } | { error: string } {
+  const values = [input.bedWidth, input.bedDepth, input.bedHeight].map(v =>
+    v === null || v === undefined || v === '' ? NaN : Number(v)
+  );
+  if (values.some(v => !Number.isFinite(v) || v <= 0)) {
+    return { error: '荷台の幅・奥行き・高さは必須です（0より大きい数値、m単位）' };
+  }
+  const [width, depth, height] = values;
+  // 1.8×4.3×1のような掛け算で生じる浮動小数点の端数を落とす
+  const capacityM3 = Math.round(width * depth * height * 1000) / 1000;
+  return { bed: { width, depth, height }, capacityM3 };
+}
+
+/**
+ * 積載利用率（システム設定、%）を踏まえた実効の容積上限。積み込み時の隙間（デッドスペース）を
+ * 考慮し、AI提案・積載率表示・容積超過の警告・荷物受付の見込みのすべてでこの値を上限として使う。
+ * 容積上限が未設定のトラック（荷台寸法を必須にする前のデータ）は従来どおり制約なし（null）
+ */
+export function effectiveCapacityM3(capacityM3: number | null | undefined, loadUtilizationPercent: number): number | null {
+  if (capacityM3 == null) return null;
+  return capacityM3 * (loadUtilizationPercent / 100);
 }
 
 export function checkCapacityOverflow(

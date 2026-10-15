@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { canEditRoute, getEditHorizonDays } from '@/lib/planEditPolicy';
 import { MAX_STOPS_PER_ROUTE } from '@/lib/planValidation';
-import { truckBed } from '@/lib/loadCapacity';
+import { effectiveCapacityM3, truckBed } from '@/lib/loadCapacity';
 import { assignStopsToTrucks, AssignTruckInput, PoolStopInput } from '@/lib/loadAssignment';
 import { reorderRoute } from '@/lib/routeReorder';
 
@@ -65,7 +65,8 @@ export async function POST(
         truckId: r.truckId,
         driverId: r.driverId,
         label: r.truck.plateNo,
-        capacityM3: r.truck.capacityM3,
+        // 積み込み時の隙間を見込み、容積上限×積載利用率（システム設定）までしか積まない
+        capacityM3: effectiveCapacityM3(r.truck.capacityM3, settings.loadUtilizationPercent),
         bed: truckBed(r.truck),
         trips: r.trips.map(t => ({ tripId: t.id, tripIndex: t.tripIndex, usedVolume: volumeByTripId.get(t.id) ?? 0 })),
       };

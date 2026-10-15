@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
-import { clampCapacityToBed } from '@/lib/loadCapacity';
+import { resolveTruckBed } from '@/lib/loadCapacity';
 
 export async function GET() {
   try {
@@ -15,23 +15,24 @@ export async function GET() {
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
-    const { plateNo, model, capacityKg, capacityM3, bedWidth, bedDepth, bedHeight, status, defaultDriverId } = body;
+    // 容積上限（capacityM3）はリクエストで受け取らず、荷台寸法から計算する
+    const { plateNo, model, capacityKg, bedWidth, bedDepth, bedHeight, status, defaultDriverId } = body;
     if (!plateNo || !model || !capacityKg) {
       return NextResponse.json({ error: '必須項目が不足しています' }, { status: 400 });
     }
-    const bed =
-      bedWidth !== undefined && bedDepth !== undefined && bedHeight !== undefined
-        ? { width: Number(bedWidth), depth: Number(bedDepth), height: Number(bedHeight) }
-        : null;
+    const resolved = resolveTruckBed({ bedWidth, bedDepth, bedHeight });
+    if ('error' in resolved) {
+      return NextResponse.json({ error: resolved.error }, { status: 400 });
+    }
     const truck = await prisma.truck.create({
       data: {
         plateNo,
         model,
         capacityKg: Number(capacityKg),
-        capacityM3: clampCapacityToBed(capacityM3 !== undefined ? Number(capacityM3) : undefined, bed),
-        bedWidth: bedWidth !== undefined ? Number(bedWidth) : undefined,
-        bedDepth: bedDepth !== undefined ? Number(bedDepth) : undefined,
-        bedHeight: bedHeight !== undefined ? Number(bedHeight) : undefined,
+        capacityM3: resolved.capacityM3,
+        bedWidth: resolved.bed.width,
+        bedDepth: resolved.bed.depth,
+        bedHeight: resolved.bed.height,
         status,
         defaultDriverId: defaultDriverId || null,
       },

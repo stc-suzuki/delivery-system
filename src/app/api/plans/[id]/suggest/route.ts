@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
-import { truckBed } from '@/lib/loadCapacity';
+import { effectiveCapacityM3, truckBed } from '@/lib/loadCapacity';
 import { assignStopsToTrucks, AssignTruckInput, PoolStopInput } from '@/lib/loadAssignment';
 
 // 手順③：自動割当（FFD）はあくまで参考データ。何も永続化しない。
@@ -56,7 +56,8 @@ export async function GET(
         truckId: r.truckId,
         driverId: r.driverId,
         label: r.truck.plateNo,
-        capacityM3: r.truck.capacityM3,
+        // 積み込み時の隙間を見込み、容積上限×積載利用率（システム設定）までしか積まない
+        capacityM3: effectiveCapacityM3(r.truck.capacityM3, settings.loadUtilizationPercent),
         bed: truckBed(r.truck),
         trips: r.trips.map(t => ({ tripId: t.id, tripIndex: t.tripIndex, usedVolume: volumeByTripId.get(t.id) ?? 0 })),
       };

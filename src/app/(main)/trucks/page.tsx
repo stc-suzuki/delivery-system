@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import { Truck as TruckIcon } from 'lucide-react';
 import PageHeader from '@/components/ui/PageHeader';
 import { useDialog } from '@/components/ui/DialogProvider';
+import { resolveTruckBed } from '@/lib/loadCapacity';
 
 type Truck = {
   id: string;
@@ -42,7 +43,6 @@ export default function TrucksPage() {
   const [plateNo, setPlateNo] = useState('');
   const [model, setModel] = useState('');
   const [capacityKg, setCapacityKg] = useState('');
-  const [capacityM3, setCapacityM3] = useState('');
   const [bedWidth, setBedWidth] = useState('');
   const [bedDepth, setBedDepth] = useState('');
   const [bedHeight, setBedHeight] = useState('');
@@ -74,7 +74,6 @@ export default function TrucksPage() {
     setPlateNo(t.plateNo);
     setModel(t.model);
     setCapacityKg(String(t.capacityKg));
-    setCapacityM3(t.capacityM3 !== null ? String(t.capacityM3) : '');
     setBedWidth(t.bedWidth !== null ? String(t.bedWidth) : '');
     setBedDepth(t.bedDepth !== null ? String(t.bedDepth) : '');
     setBedHeight(t.bedHeight !== null ? String(t.bedHeight) : '');
@@ -87,13 +86,16 @@ export default function TrucksPage() {
     setPlateNo('');
     setModel('');
     setCapacityKg('');
-    setCapacityM3('');
     setBedWidth('');
     setBedDepth('');
     setBedHeight('');
     setStatus('AVAILABLE');
     setDefaultDriverId('');
   }
+
+  // 容積上限は入力させず、荷台寸法から計算した値を表示する（保存時もサーバー側で同じ計算をする）
+  const bedResult = resolveTruckBed({ bedWidth, bedDepth, bedHeight });
+  const computedCapacityM3 = 'error' in bedResult ? null : bedResult.capacityM3;
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -109,7 +111,6 @@ export default function TrucksPage() {
           plateNo,
           model,
           capacityKg,
-          capacityM3: capacityM3 ? Number(capacityM3) : null,
           bedWidth: bedWidth ? Number(bedWidth) : null,
           bedDepth: bedDepth ? Number(bedDepth) : null,
           bedHeight: bedHeight ? Number(bedHeight) : null,
@@ -186,14 +187,12 @@ export default function TrucksPage() {
               onChange={e => setCapacityKg(e.target.value)}
               className="rounded border border-gray-300 px-3 py-2 text-sm"
             />
-            <input
-              type="number"
-              step="0.01"
-              placeholder="容積上限(m3・任意)"
-              value={capacityM3}
-              onChange={e => setCapacityM3(e.target.value)}
-              className="rounded border border-gray-300 px-3 py-2 text-sm"
-            />
+            <div
+              className="flex items-center rounded border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-[#4B5563]"
+              title="荷台の幅×奥行き×高さから自動で計算します"
+            >
+              容積上限: {computedCapacityM3 !== null ? `${computedCapacityM3}m3` : '荷台寸法から自動計算'}
+            </div>
             <select
               value={status}
               onChange={e => setStatus(e.target.value as Truck['status'])}
@@ -221,25 +220,31 @@ export default function TrucksPage() {
                 ))}
             </select>
             <input
+              required
               type="number"
               step="0.01"
-              placeholder="荷台幅(m・任意)"
+              min="0.01"
+              placeholder="荷台幅(m)"
               value={bedWidth}
               onChange={e => setBedWidth(e.target.value)}
               className="rounded border border-gray-300 px-3 py-2 text-sm"
             />
             <input
+              required
               type="number"
               step="0.01"
-              placeholder="荷台奥行き(m・任意)"
+              min="0.01"
+              placeholder="荷台奥行き(m)"
               value={bedDepth}
               onChange={e => setBedDepth(e.target.value)}
               className="rounded border border-gray-300 px-3 py-2 text-sm"
             />
             <input
+              required
               type="number"
               step="0.01"
-              placeholder="荷台高さ(m・任意)"
+              min="0.01"
+              placeholder="荷台高さ(m)"
               value={bedHeight}
               onChange={e => setBedHeight(e.target.value)}
               className="rounded border border-gray-300 px-3 py-2 text-sm"
@@ -260,7 +265,7 @@ export default function TrucksPage() {
             </div>
           </div>
           <p className="text-xs text-[#4B5563]">
-            容積上限・荷台寸法は任意入力です。未入力のトラックは積載割当の容積・サイズチェックの対象外になります。
+            荷台の幅・奥行き・高さは必須です。容積上限は荷台寸法（幅×奥行き×高さ）から自動で計算します。積み込み時の隙間によるゆとりは、システム設定の「積載利用率」で全トラック一括に設定します。
           </p>
         </form>
       </div>

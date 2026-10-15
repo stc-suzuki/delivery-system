@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { bedVolume, checkCapacityOverflow, clampCapacityToBed, fitsBed, truckBed } from './loadCapacity';
+import { bedVolume, checkCapacityOverflow, effectiveCapacityM3, fitsBed, resolveTruckBed, truckBed } from './loadCapacity';
 
 // 2tトラック相当の荷台（幅1.6m・奥行き3.0m・高さ1.8m）
 const bed = { width: 1.6, depth: 3.0, height: 1.8 };
@@ -37,18 +37,39 @@ describe('truckBed（トラックの荷台寸法）', () => {
   });
 });
 
-describe('clampCapacityToBed（容積上限を荷台の物理容積で補正）', () => {
-  it('荷台の物理容積を超える容積上限は、荷台容積に抑える', () => {
+describe('resolveTruckBed（荷台寸法の検証と容積上限の計算）', () => {
+  it('容積上限は荷台の物理容積（幅×奥行き×高さ）。浮動小数点の端数は落とす', () => {
     expect(bedVolume(bed)).toBeCloseTo(8.64);
-    expect(clampCapacityToBed(20, bed)).toBeCloseTo(8.64);
+    expect(resolveTruckBed({ bedWidth: 1.6, bedDepth: 3.0, bedHeight: 1.8 })).toEqual({ bed, capacityM3: 8.64 });
+    expect(resolveTruckBed({ bedWidth: '1.8', bedDepth: '4.3', bedHeight: '1' })).toEqual({
+      bed: { width: 1.8, depth: 4.3, height: 1 },
+      capacityM3: 7.74,
+    });
   });
 
-  it('荷台容積以下の容積上限はそのまま', () => {
-    expect(clampCapacityToBed(5, bed)).toBe(5);
+  it('荷台寸法が1つでも欠けている・0以下・数値でなければエラー', () => {
+    for (const input of [
+      { bedWidth: 1, bedDepth: 1, bedHeight: undefined },
+      { bedWidth: 1, bedDepth: null, bedHeight: 1 },
+      { bedWidth: '', bedDepth: 1, bedHeight: 1 },
+      { bedWidth: 0, bedDepth: 1, bedHeight: 1 },
+      { bedWidth: -1, bedDepth: 1, bedHeight: 1 },
+      { bedWidth: 'abc', bedDepth: 1, bedHeight: 1 },
+    ]) {
+      expect(resolveTruckBed(input)).toHaveProperty('error');
+    }
+  });
+});
+
+describe('effectiveCapacityM3（積載利用率を踏まえた実効の容積上限）', () => {
+  it('容積上限×積載利用率', () => {
+    expect(effectiveCapacityM3(8, 100)).toBe(8);
+    expect(effectiveCapacityM3(8, 85)).toBeCloseTo(6.8);
   });
 
-  it('荷台寸法が未設定なら補正しない', () => {
-    expect(clampCapacityToBed(20, null)).toBe(20);
+  it('容積上限が未設定なら制約なし（null）', () => {
+    expect(effectiveCapacityM3(null, 85)).toBeNull();
+    expect(effectiveCapacityM3(undefined, 85)).toBeNull();
   });
 });
 
