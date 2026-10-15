@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import dynamic from 'next/dynamic';
 import { Building2 } from 'lucide-react';
 import PageHeader from '@/components/ui/PageHeader';
@@ -38,6 +38,9 @@ export default function LocationsPage() {
   const [address, setAddress] = useState('');
   const [phone, setPhone] = useState('');
   const [preview, setPreview] = useState<{ lat: number; lng: number; formattedAddress: string } | null>(null);
+  // 編集中の配送先の、いま登録されている位置。「住所確認」をすると確認結果（preview）の表示に切り替わる
+  const [savedPosition, setSavedPosition] = useState<{ lat: number; lng: number; formattedAddress: string | null } | null>(null);
+  const formRef = useRef<HTMLDivElement>(null);
   const [error, setError] = useState('');
   const [saving, setSaving] = useState(false);
   const [checking, setChecking] = useState(false);
@@ -113,7 +116,10 @@ export default function LocationsPage() {
     setAddress(loc.address);
     setPhone(loc.phone ?? '');
     setPreview(null);
+    setSavedPosition({ lat: loc.lat, lng: loc.lng, formattedAddress: loc.formattedAddress });
     setError('');
+    // 一覧の下の方で「編集」を押すと、フォームと地図が画面の外にあって気づけないため、フォームまで戻す
+    formRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
   }
 
   function resetForm() {
@@ -122,6 +128,7 @@ export default function LocationsPage() {
     setAddress('');
     setPhone('');
     setPreview(null);
+    setSavedPosition(null);
   }
 
   async function handleBulkUpload() {
@@ -167,8 +174,9 @@ export default function LocationsPage() {
     }
   }
 
-  const previewRoutes: RouteForMap[] = preview
-    ? [{ id: 'preview', color: '#2563eb', stops: [{ lat: preview.lat, lng: preview.lng, order: 0, name }] }]
+  const mapPosition = preview ?? savedPosition;
+  const previewRoutes: RouteForMap[] = mapPosition
+    ? [{ id: 'preview', color: '#2563eb', stops: [{ lat: mapPosition.lat, lng: mapPosition.lng, order: 0, name }] }]
     : [];
 
   return (
@@ -180,7 +188,7 @@ export default function LocationsPage() {
         tint="gray"
       />
 
-      <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+      <div ref={formRef} className="grid scroll-mt-4 grid-cols-1 gap-6 lg:grid-cols-2">
         {/* 新規登録フォーム */}
         <div className="rounded-lg border border-panel-line bg-panel p-4 shadow-sm">
           <h2 className="mb-3 text-sm font-semibold text-gray-700">{editingId ? '配送先編集' : '新規登録'}</h2>
@@ -222,8 +230,14 @@ export default function LocationsPage() {
                 className="mt-1 w-full rounded border border-gray-300 px-3 py-2 text-sm"
               />
             </div>
-            {preview && (
+            {preview ? (
               <p className="text-xs text-[#4B5563]">確認結果: {preview.formattedAddress}</p>
+            ) : (
+              savedPosition && (
+                <p className="text-xs text-[#4B5563]">
+                  地図は登録済みの位置です{savedPosition.formattedAddress ? `（${savedPosition.formattedAddress}）` : ''}。住所を変えた場合は「住所確認」で新しい位置を確かめてください。
+                </p>
+              )
             )}
             <div className="flex gap-2">
               <button
