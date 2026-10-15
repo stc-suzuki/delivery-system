@@ -191,7 +191,7 @@ export default function TrucksPage() {
               className="flex items-center rounded border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-[#4B5563]"
               title="荷台の幅×奥行き×高さから自動で計算します"
             >
-              容積上限: {computedCapacityM3 !== null ? `${computedCapacityM3}m3` : '荷台寸法から自動計算'}
+              容積上限: {computedCapacityM3 !== null ? `${computedCapacityM3}m3` : '自動計算'}
             </div>
             <select
               value={status}
