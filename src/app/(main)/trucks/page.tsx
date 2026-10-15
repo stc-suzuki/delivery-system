@@ -160,7 +160,7 @@ export default function TrucksPage() {
         tint="gray"
       />
 
-      <div className="rounded-lg border border-[#E5EAF2] bg-[#F2F5F9] p-4 shadow-sm">
+      <div className="rounded-lg border border-panel-line bg-panel p-4 shadow-sm">
         <h2 className="mb-3 text-sm font-semibold text-gray-700">{editingId ? 'トラック編集' : '新規登録'}</h2>
         {error && <p className="mb-2 rounded bg-red-50 p-2 text-sm text-red-600">{error}</p>}
         <form onSubmit={handleSubmit} className="space-y-3">
@@ -271,7 +271,7 @@ export default function TrucksPage() {
       </div>
 
 
-      <div className="overflow-x-auto rounded-lg border border-[#E5EAF2] bg-[#F2F5F9] shadow-sm">
+      <div className="overflow-x-auto rounded-lg border border-panel-line bg-panel shadow-sm">
         <table className="min-w-full divide-y divide-gray-200 text-sm">
           <thead className="bg-gray-50">
             <tr>

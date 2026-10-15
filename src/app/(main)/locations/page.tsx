@@ -182,7 +182,7 @@ export default function LocationsPage() {
 
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
         {/* 新規登録フォーム */}
-        <div className="rounded-lg border border-[#E5EAF2] bg-[#F2F5F9] p-4 shadow-sm">
+        <div className="rounded-lg border border-panel-line bg-panel p-4 shadow-sm">
           <h2 className="mb-3 text-sm font-semibold text-gray-700">{editingId ? '配送先編集' : '新規登録'}</h2>
           {error && <p className="mb-2 rounded bg-red-50 p-2 text-sm text-red-600">{error}</p>}
           <form onSubmit={handleSubmit} className="space-y-3">
@@ -247,13 +247,13 @@ export default function LocationsPage() {
         </div>
 
         {/* 地図プレビュー */}
-        <div className="h-80 rounded-lg border border-[#E5EAF2] bg-[#F2F5F9] p-2 shadow-sm lg:h-auto">
+        <div className="h-80 rounded-lg border border-panel-line bg-panel p-2 shadow-sm lg:h-auto">
           <DeliveryMap routes={previewRoutes} />
         </div>
       </div>
 
       {/* CSV一括登録 */}
-      <div className="rounded-lg border border-[#E5EAF2] bg-[#F2F5F9] p-4 shadow-sm">
+      <div className="rounded-lg border border-panel-line bg-panel p-4 shadow-sm">
         <h2 className="mb-1 text-sm font-semibold text-gray-700">CSV一括登録（見出し：name,address,phone または 名称,住所,電話番号）</h2>
         <p className="mb-3 text-xs text-gray-500">Excelで保存したCSV（Shift_JIS）・UTF-8のどちらでも読み込めます。</p>
         <div className="flex items-center gap-3">
@@ -299,7 +299,7 @@ export default function LocationsPage() {
       </form>
 
       {/* 一覧テーブル */}
-      <div className="overflow-x-auto rounded-lg border border-[#E5EAF2] bg-[#F2F5F9] shadow-sm">
+      <div className="overflow-x-auto rounded-lg border border-panel-line bg-panel shadow-sm">
         <table className="min-w-full divide-y divide-gray-200 text-sm">
           <thead className="bg-gray-50">
             <tr>

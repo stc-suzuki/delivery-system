@@ -10,15 +10,15 @@ import { dayStatusKind, type DayCapacity } from '@/lib/capacityOverviewStatus';
 function statusOf(day: DayCapacity): { label: string; badgeClass: string; rowClass: string } {
   switch (dayStatusKind(day)) {
     case 'no-truck':
-      return { label: 'トラック未登録', badgeClass: 'bg-gray-200 text-gray-600', rowClass: 'border-[#E5EAF2] bg-[#F2F5F9]' };
+      return { label: 'トラック未登録', badgeClass: 'bg-gray-200 text-gray-600', rowClass: 'border-panel-line bg-panel' };
     case 'no-capacity':
-      return { label: '容量未設定', badgeClass: 'bg-gray-200 text-gray-600', rowClass: 'border-[#E5EAF2] bg-[#F2F5F9]' };
+      return { label: '容量未設定', badgeClass: 'bg-gray-200 text-gray-600', rowClass: 'border-panel-line bg-panel' };
     case 'over':
       return { label: '⚠ 超過', badgeClass: 'bg-red-600 text-white', rowClass: 'border-red-300 bg-red-50' };
     case 'warning':
       return { label: '注意', badgeClass: 'bg-amber-500 text-white', rowClass: 'border-amber-300 bg-amber-50' };
     default:
-      return { label: 'OK', badgeClass: 'bg-gray-100 text-gray-600', rowClass: 'border-[#E5EAF2] bg-[#F2F5F9]' };
+      return { label: 'OK', badgeClass: 'bg-gray-100 text-gray-600', rowClass: 'border-panel-line bg-panel' };
   }
 }
 
@@ -60,7 +60,7 @@ export default function CapacityOverviewPage() {
       {!days ? (
         <p className="text-gray-500">読み込み中...</p>
       ) : (
-        <div className="overflow-x-auto rounded-lg border border-[#E5EAF2] bg-[#F2F5F9] shadow-sm">
+        <div className="overflow-x-auto rounded-lg border border-panel-line bg-panel shadow-sm">
           <table className="w-full min-w-[720px] text-sm">
             <thead className="bg-gray-50 text-left text-xs font-semibold text-gray-500">
               <tr>

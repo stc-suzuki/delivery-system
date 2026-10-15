@@ -46,7 +46,7 @@ function StatusGroupTable({ status, group }: { status: DriverRow['status']; grou
   // ドライバー・トラック・帰社状況を1行に並べる（帰社の列は表示が切れない幅で固定し、狭い画面では名前を省略する）
   const showReturn = status === 'COMPLETED';
   return (
-    <div className="rounded-lg border border-[#E5EAF2] bg-[#F2F5F9] p-4 shadow-sm">
+    <div className="rounded-lg border border-panel-line bg-panel p-4 shadow-sm">
       <div className="mb-2 flex items-center gap-2">
         <span className={`rounded-full px-2.5 py-0.5 text-xs font-medium ${STATUS_STYLES[status]}`}>
           {STATUS_LABELS[status]}
@@ -106,7 +106,7 @@ export default function DriverStatusTable({ drivers }: { drivers: DriverRow[] })
     <div className="space-y-2">
       <h3 className="text-sm font-semibold text-gray-700">ドライバー稼働状況</h3>
       {drivers.length === 0 ? (
-        <p className="rounded-lg border border-[#E5EAF2] bg-[#F2F5F9] py-3 text-center text-sm text-[#4B5563] shadow-sm">
+        <p className="rounded-lg border border-panel-line bg-panel py-3 text-center text-sm text-[#4B5563] shadow-sm">
           ドライバーが登録されていません
         </p>
       ) : (

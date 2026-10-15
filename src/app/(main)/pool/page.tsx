@@ -648,23 +648,23 @@ function PoolPageContent() {
       ) : (
         <>
           <div className="space-y-1">
-          <h2 className="text-sm text-[#1B2333]">積載量・到着時間の概略シミュレーション</h2>
+          <h2 className="text-sm text-heading">積載量・到着時間の概略シミュレーション</h2>
           <div className="flex flex-col gap-2 sm:flex-row">
             <div className="flex-1">
               {truckCapacity && truckCapacity.totalM3 === 0 ? (
-                <div className="rounded-lg border border-[#E5EAF2] bg-[#F2F5F9] px-3 py-2 text-xs text-[#4B5563]">
+                <div className="rounded-lg border border-panel-line bg-panel px-3 py-2 text-xs text-[#4B5563]">
                   容量未設定（登録済み {liveVolumeM3.toFixed(2)}m3）
                 </div>
               ) : capacityBand ? (
                 (() => {
                   const usageRatio = liveVolumeM3 / capacityBand.effectiveM3;
-                  const barTone = capacityBand.overCapacity ? 'bg-red-500' : usageRatio >= 0.8 ? 'bg-amber-500' : 'bg-[#1F3A63]';
+                  const barTone = capacityBand.overCapacity ? 'bg-red-500' : usageRatio >= 0.8 ? 'bg-amber-500' : 'bg-brand';
                   return (
                     <div
                       className={`rounded-lg border px-3 py-2 text-xs ${
                         capacityBand.overCapacity
                           ? 'border-red-300 bg-red-50 text-red-800'
-                          : 'border-[#E5EAF2] bg-[#F2F5F9] text-[#1B2333]'
+                          : 'border-panel-line bg-panel text-heading'
                       }`}
                     >
                       <div className="flex items-center justify-between gap-2">
@@ -676,7 +676,7 @@ function PoolPageContent() {
                         </span>
                         <span className="shrink-0 text-[#4B5563]">{Math.round(usageRatio * 100)}%</span>
                       </div>
-                      <div className="mt-1.5 h-1.5 w-full overflow-hidden rounded-full bg-[#E5EAF2]">
+                      <div className="mt-1.5 h-1.5 w-full overflow-hidden rounded-full bg-panel-line">
                         <div
                           className={`h-full rounded-full transition-all ${barTone}`}
                           style={{ width: `${Math.min(usageRatio, 1) * 100}%` }}
@@ -691,7 +691,7 @@ function PoolPageContent() {
             {timeOverflow && (
               <div
                 className={`flex-1 rounded-lg border px-3 py-2 text-xs ${
-                  timeOverflow.overCapacityTime ? 'border-red-300 bg-red-50 text-red-800' : 'border-[#E5EAF2] bg-[#F2F5F9] text-[#1B2333]'
+                  timeOverflow.overCapacityTime ? 'border-red-300 bg-red-50 text-red-800' : 'border-panel-line bg-panel text-heading'
                 }`}
               >
                 <span className="font-semibold">
@@ -709,13 +709,13 @@ function PoolPageContent() {
 
           <div
             className={`rounded-lg border p-3 shadow-sm ${
-              selectedLocationIds.size > 0 ? 'border-amber-300 bg-amber-50' : 'border-[#E5EAF2] bg-[#F2F5F9]'
+              selectedLocationIds.size > 0 ? 'border-amber-300 bg-amber-50' : 'border-panel-line bg-panel'
             }`}
           >
             <div className="mb-2 flex items-center gap-2">
               <h2
                 className={`text-sm font-semibold ${
-                  selectedLocationIds.size > 0 ? 'text-amber-900' : 'text-[#1B2333]'
+                  selectedLocationIds.size > 0 ? 'text-amber-900' : 'text-heading'
                 }`}
               >
                 未割当（登録・編集可能）
@@ -763,8 +763,8 @@ function PoolPageContent() {
           </div>
 
           {assignedStops.length > 0 && (
-            <div className="rounded-lg border border-[#E5EAF2] bg-[#F2F5F9] p-3 shadow-sm">
-              <h2 className="mb-2 text-sm font-semibold text-[#1B2333]">割当済み（この画面では編集できません）</h2>
+            <div className="rounded-lg border border-panel-line bg-panel p-3 shadow-sm">
+              <h2 className="mb-2 text-sm font-semibold text-heading">割当済み（この画面では編集できません）</h2>
               <ul className="space-y-1 text-sm text-gray-600">
                 {assignedStops.map(s => (
                   <li key={s.id} className="flex items-center gap-2">

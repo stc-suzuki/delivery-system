@@ -129,7 +129,7 @@ export default function ProductsPage() {
         tint="gray"
       />
 
-      <div className="rounded-lg border border-[#E5EAF2] bg-[#F2F5F9] p-4 shadow-sm">
+      <div className="rounded-lg border border-panel-line bg-panel p-4 shadow-sm">
         <h2 className="mb-3 text-sm font-semibold text-gray-700">{editingId ? '商品編集' : '新規登録'}</h2>
         {error && <p className="mb-2 rounded bg-red-50 p-2 text-sm text-red-600">{error}</p>}
         <form onSubmit={handleSubmit} className="grid grid-cols-1 gap-3 sm:grid-cols-5">
@@ -185,7 +185,7 @@ export default function ProductsPage() {
       </div>
 
       {/* CSV一括登録 */}
-      <div className="rounded-lg border border-[#E5EAF2] bg-[#F2F5F9] p-4 shadow-sm">
+      <div className="rounded-lg border border-panel-line bg-panel p-4 shadow-sm">
         <h2 className="mb-1 text-sm font-semibold text-gray-700">CSV一括登録（見出し：商品名,幅,奥行き,高さ）</h2>
         <p className="mb-3 text-xs text-gray-500">
           寸法はm単位。見出しが無い場合は「商品名,幅,奥行き,高さ」の順として読みます（体積などその後ろの列は読みません）。Excelで保存したCSV（Shift_JIS）・UTF-8のどちらでも読み込めます。同じ名前の商品が既にある行は登録しません。
@@ -219,7 +219,7 @@ export default function ProductsPage() {
         )}
       </div>
 
-      <div className="overflow-x-auto rounded-lg border border-[#E5EAF2] bg-[#F2F5F9] shadow-sm">
+      <div className="overflow-x-auto rounded-lg border border-panel-line bg-panel shadow-sm">
         <table className="min-w-full divide-y divide-gray-200 text-sm">
           <thead className="bg-gray-50">
             <tr>

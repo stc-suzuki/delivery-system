@@ -238,7 +238,7 @@ export default function DispatchGanttChart({
   }
 
   return (
-    <div className="overflow-x-auto rounded-lg border border-[#E5EAF2] bg-[#F2F5F9] shadow-sm">
+    <div className="overflow-x-auto rounded-lg border border-panel-line bg-panel shadow-sm">
       <div className="min-w-[800px]">
         {/* ヘッダー: 時間軸 */}
         <div className="flex border-b border-gray-200">

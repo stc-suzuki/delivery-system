@@ -5,6 +5,13 @@
 :root {
   --background: #ffffff;
   --foreground: #171717;
+
+  /* 画面のカード配色（tailwind.config.tsのpanel・panel-line・heading・brand）。
+     配色を変えるときはこの4つの値だけを変える。案01「濃紺トラスト」 */
+  --panel: #F2F5F9;      /* カードの背景 */
+  --panel-line: #E5EAF2; /* カードの枠線・進捗バーの下地 */
+  --heading: #1B2333;    /* 見出しの文字 */
+  --brand: #1F3A63;      /* アクセント（進捗バー） */
 }
 
 @media (prefers-color-scheme: dark) {

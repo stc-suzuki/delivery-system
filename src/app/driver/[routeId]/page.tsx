@@ -386,7 +386,7 @@ export default function DriverRoutePage() {
   // 完了・スキップ・取消ボタンを無効化し、順番を飛ばして先の便を操作させない
   function renderStopCard(stop: Stop, index: number, actionable: boolean) {
     return (
-      <div key={stop.id} className="rounded-lg border border-[#E5EAF2] bg-[#F2F5F9] p-3 shadow-sm">
+      <div key={stop.id} className="rounded-lg border border-panel-line bg-panel p-3 shadow-sm">
         <div className="flex items-start justify-between gap-2">
           <div className="flex items-start gap-2">
             <span className="mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-blue-600 text-xs font-bold text-white">
@@ -534,7 +534,7 @@ export default function DriverRoutePage() {
           </p>
         )}
 
-        <div className="rounded-lg border border-[#E5EAF2] bg-[#F2F5F9] p-3 shadow-sm">
+        <div className="rounded-lg border border-panel-line bg-panel p-3 shadow-sm">
           <div className="flex items-center justify-between">
             <p className="text-sm font-medium text-gray-700">給油記録</p>
             <button

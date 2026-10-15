@@ -31,12 +31,12 @@ export default function KpiCards({ routeCount, completedCount, inProgressCount, 
       {cards.map(card => {
         const Icon = card.icon;
         return (
-          <div key={card.label} className="flex items-center gap-3 rounded-lg border border-[#E5EAF2] bg-[#F2F5F9] p-4 shadow-sm">
+          <div key={card.label} className="flex items-center gap-3 rounded-lg border border-panel-line bg-panel p-4 shadow-sm">
             <div className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-full ${TINT_CLASSES[card.tint]}`}>
               <Icon className="h-4 w-4" />
             </div>
             <p className="truncate text-sm text-[#4B5563]">{card.label}</p>
-            <p className="ml-auto shrink-0 text-2xl font-bold text-[#1B2333]">{card.value}</p>
+            <p className="ml-auto shrink-0 text-2xl font-bold text-heading">{card.value}</p>
           </div>
         );
       })}

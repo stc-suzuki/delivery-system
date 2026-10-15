@@ -135,7 +135,7 @@ export default function TrackingPage() {
         showDeliveryAdminBadge={canOperate}
       />
       <div className="flex flex-1 gap-3 overflow-hidden">
-      <aside className="w-72 shrink-0 space-y-2 overflow-y-auto rounded-lg border border-[#E5EAF2] bg-[#F2F5F9] p-3 shadow-sm">
+      <aside className="w-72 shrink-0 space-y-2 overflow-y-auto rounded-lg border border-panel-line bg-panel p-3 shadow-sm">
         <h2 className="text-sm font-semibold text-gray-700">本日のルート</h2>
         {allRoutes.length === 0 && <p className="text-sm text-[#4B5563]">ルートがありません</p>}
         {allRoutes.map(route => (

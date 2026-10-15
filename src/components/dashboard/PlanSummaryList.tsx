@@ -123,7 +123,7 @@ export default function PlanSummaryList({ routes }: { routes: RouteSummary[] }) 
           const isCompleted = route.routeOperationStatus === 'COMPLETED';
           const cardStyle = isCompleted
             ? 'border-green-200 border-l-4 border-l-green-500 bg-green-50'
-            : 'border-[#E5EAF2] bg-[#F2F5F9]';
+            : 'border-panel-line bg-panel';
           const { prefix, lastFour } = splitPlateNo(route.truck);
           return (
             <div
@@ -143,16 +143,16 @@ export default function PlanSummaryList({ routes }: { routes: RouteSummary[] }) 
                 <p className="text-sm text-[#4B5563]">
                   停車地: {route.completedStopCount} / {route.stopCount} 完了
                 </p>
-                <div className="mt-1 h-1.5 w-full rounded-full bg-[#E5EAF2]">
+                <div className="mt-1 h-1.5 w-full rounded-full bg-panel-line">
                   <div
-                    className="h-1.5 rounded-full bg-[#1F3A63]"
+                    className="h-1.5 rounded-full bg-brand"
                     style={{ width: `${progress}%` }}
                   />
                 </div>
                 <div className="mt-2 flex items-center gap-2">
-                  <span className="text-base font-bold text-[#1B2333]">
+                  <span className="text-base font-bold text-heading">
                     {route.driver}
-                    <span className="ml-1 text-base font-bold text-[#1B2333]">
+                    <span className="ml-1 text-base font-bold text-heading">
                       {prefix && <span className="text-xs font-normal text-[#4B5563]">{prefix}</span>}
                       {lastFour}
                     </span>

@@ -24,7 +24,7 @@ type Settings = {
 
 function SettingsCard({ title, children }: { title: string; children: React.ReactNode }) {
   return (
-    <div className="space-y-5 rounded-lg border border-[#E5EAF2] bg-[#F2F5F9] p-6 shadow-sm">
+    <div className="space-y-5 rounded-lg border border-panel-line bg-panel p-6 shadow-sm">
       <h2 className="text-sm font-semibold text-gray-800">{title}</h2>
       {children}
     </div>

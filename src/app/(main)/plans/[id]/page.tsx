@@ -939,7 +939,7 @@ export default function PlanDetailPage() {
           </div>
 
           {started ? (
-            <div className="rounded-lg border border-[#E5EAF2] bg-[#F2F5F9] p-3 shadow-sm">
+            <div className="rounded-lg border border-panel-line bg-panel p-3 shadow-sm">
               <h2 className="mb-2 text-sm font-semibold text-gray-700">トラック・ドライバーの割当</h2>
               <div className="flex items-center gap-2">
                 <select
@@ -997,7 +997,7 @@ export default function PlanDetailPage() {
               )}
             </div>
           ) : (
-            <div className="rounded-lg border border-[#E5EAF2] bg-[#F2F5F9] p-3 shadow-sm">
+            <div className="rounded-lg border border-panel-line bg-panel p-3 shadow-sm">
               <div className="mb-2 flex items-center justify-between">
                 <h2 className="text-sm font-semibold text-gray-700">使用中のトラック</h2>
                 {deleteControls}
@@ -1090,7 +1090,7 @@ export default function PlanDetailPage() {
 
           {started ? (
             <div className="space-y-4">
-              <div className="rounded-lg border border-[#E5EAF2] bg-[#F2F5F9] p-3 shadow-sm">
+              <div className="rounded-lg border border-panel-line bg-panel p-3 shadow-sm">
                 <div className="mb-2 flex items-center justify-between">
                   <h2 className="text-sm font-semibold text-gray-700">（稼働後に追加された）配送先の割当</h2>
                   <span className="text-xs text-[#4B5563]">
@@ -1206,7 +1206,7 @@ export default function PlanDetailPage() {
           )}
 
           {!started && siblingRoutes.length > 0 && (
-            <div className="rounded-lg border border-[#E5EAF2] bg-[#F2F5F9] p-3 shadow-sm">
+            <div className="rounded-lg border border-panel-line bg-panel p-3 shadow-sm">
               <div className="mb-2 flex items-center justify-between">
                 <h2 className="text-sm font-semibold text-gray-700">配送先の割当</h2>
                 <button

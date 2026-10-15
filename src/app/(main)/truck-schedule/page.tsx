@@ -392,7 +392,7 @@ function TruckSchedulePageContent() {
       {saved && !error && <p className="rounded bg-green-50 p-2 text-sm text-green-700">保存しました。</p>}
 
       {startedRoutes.length > 0 && (
-        <div className="rounded-lg border border-[#E5EAF2] bg-[#F2F5F9] p-3 shadow-sm">
+        <div className="rounded-lg border border-panel-line bg-panel p-3 shadow-sm">
           <h2 className="mb-2 text-sm font-semibold text-gray-700">稼働中・完了済みのトラック</h2>
           <ul className="space-y-1 text-sm text-gray-700">
             {startedRoutes.map(r => (
@@ -408,7 +408,7 @@ function TruckSchedulePageContent() {
           この日（{date}）は土日祝日のため配送除外日です。トラックは登録できません。
         </div>
       ) : (
-      <div className="rounded-lg border border-[#E5EAF2] bg-[#F2F5F9] p-3 shadow-sm">
+      <div className="rounded-lg border border-panel-line bg-panel p-3 shadow-sm">
         <div className="mb-2 flex items-center justify-between">
           <h2 className="text-sm font-semibold text-gray-700">使用可能なトラックを選ぶ</h2>
           <button

@@ -11,6 +11,11 @@ const config: Config = {
       colors: {
         background: "var(--background)",
         foreground: "var(--foreground)",
+        // カード配色。値はglobals.cssの:rootで定義する
+        panel: "var(--panel)",
+        "panel-line": "var(--panel-line)",
+        heading: "var(--heading)",
+        brand: "var(--brand)",
       },
     },
   },
