@@ -238,7 +238,8 @@ export default function LocationsPage() {
 
       {/* CSV一括登録 */}
       <div className="rounded-lg border border-[#E5EAF2] bg-[#F2F5F9] p-4 shadow-sm">
-        <h2 className="mb-3 text-sm font-semibold text-gray-700">CSV一括登録（name,address,phone）</h2>
+        <h2 className="mb-1 text-sm font-semibold text-gray-700">CSV一括登録（見出し：name,address,phone または 名称,住所,電話番号）</h2>
+        <p className="mb-3 text-xs text-gray-500">Excelで保存したCSV（Shift_JIS）・UTF-8のどちらでも読み込めます。</p>
         <div className="flex items-center gap-3">
           <input
             type="file"

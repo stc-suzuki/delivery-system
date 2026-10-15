@@ -4,6 +4,7 @@ import { prisma } from '@/lib/prisma';
 import { geocodeAddress } from '@/lib/geocode';
 import { extractCity } from '@/lib/address';
 import { BulkLocationResult } from '@/types';
+import { decodeCsv, normalizeCsvHeader } from '@/lib/csvImport';
 
 type CsvRow = { name: string; address: string; phone?: string };
 
@@ -15,8 +16,14 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'CSVファイルが指定されていません' }, { status: 400 });
     }
 
-    const text = await file.text();
-    const parsed = Papa.parse<CsvRow>(text, { header: true, skipEmptyLines: true });
+    // file.text()はUTF-8決め打ちのため、ExcelのShift_JISのCSVが文字化けして住所が引けなかった
+    const text = decodeCsv(new Uint8Array(await file.arrayBuffer()));
+    const parsed = Papa.parse<CsvRow>(text, {
+      header: true,
+      skipEmptyLines: true,
+      transformHeader: normalizeCsvHeader,
+      transform: value => value.trim(),
+    });
 
     const result: BulkLocationResult = { success: 0, failed: 0, errors: [] };
 
@@ -33,7 +40,7 @@ export async function POST(req: NextRequest) {
           data: {
             name: row.name,
             address: row.address,
-            phone: row.phone ?? null,
+            phone: row.phone || null,
             formattedAddress: geo.formattedAddress,
             lat: geo.lat,
             lng: geo.lng,
