@@ -21,6 +21,7 @@ import {
   Route,
   UserCog,
   ClipboardCheck,
+  LogOut,
   type LucideIcon,
 } from 'lucide-react';
 import { dayStatusKind, type DayCapacity } from '@/lib/capacityOverviewStatus';
@@ -31,6 +32,13 @@ const ROLE_RANK: Record<string, number> = {
   STAFF: 0,
   DELIVERY_ADMIN: 1,
   SYSTEM_ADMIN: 2,
+};
+
+// ログイン中の人の権限バッジ。色はその権限で使えるメニュー区分の色に合わせる
+const ROLE_BADGES: Record<string, { label: string; className: string }> = {
+  STAFF: { label: '一般ユーザー', className: 'bg-blue-100 text-blue-900' },
+  DELIVERY_ADMIN: { label: '配送管理者', className: 'bg-indigo-100 text-indigo-900' },
+  SYSTEM_ADMIN: { label: 'システム管理者', className: 'bg-gray-200 text-gray-800' },
 };
 
 const NAV_ZONE_1: NavItem[] = [
@@ -223,11 +231,22 @@ export default function Sidebar() {
           </div>
         )}
       </nav>
-      <div className="border-t border-gray-200 p-2">
+      <div className="space-y-2 border-t border-gray-200 p-3">
+        {status === 'authenticated' && (
+          <div className="flex min-w-0 items-center gap-2">
+            <span className="truncate text-sm font-semibold text-gray-800">{session?.user?.name}</span>
+            {ROLE_BADGES[role] && (
+              <span className={`shrink-0 rounded-full px-2 py-0.5 text-[11px] font-medium ${ROLE_BADGES[role].className}`}>
+                {ROLE_BADGES[role].label}
+              </span>
+            )}
+          </div>
+        )}
         <button
           onClick={() => signOut({ callbackUrl: '/login' })}
-          className="block w-full rounded px-3 py-2 text-left text-sm font-medium text-gray-600 hover:bg-gray-100"
+          className="flex w-full items-center justify-center gap-2 rounded-md border border-gray-300 py-1.5 text-sm font-medium text-gray-700 hover:bg-gray-50"
         >
+          <LogOut className="h-4 w-4" />
           ログアウト
         </button>
       </div>
