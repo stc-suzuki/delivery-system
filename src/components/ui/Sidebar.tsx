@@ -175,7 +175,7 @@ export default function Sidebar() {
         {/* 一般権限で唯一データを入力する画面のため、参照用の業務メニューとは分けてボタンとして置く */}
         <Link
           href="/pool"
-          className={`flex items-center justify-between gap-2 whitespace-nowrap mt-4 rounded-md bg-blue-600 px-2.5 py-1text-sm font-semibold text-white hover:bg-blue-700 ${
+          className={`flex items-center justify-between gap-2 whitespace-nowrap mt-4 rounded-md bg-blue-600 px-2.5 py-[5px] text-sm font-semibold text-white hover:bg-blue-700 ${
             isActive('/pool') ? 'ring-2 ring-blue-300 ring-offset-1' : ''
           }`}
         >
