@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import { signIn } from 'next-auth/react';
 import { useRouter } from 'next/navigation';
+import { Route } from 'lucide-react';
 
 export default function LoginPage() {
   const router = useRouter();
@@ -45,7 +46,16 @@ export default function LoginPage() {
         onSubmit={handleSubmit}
         className="w-full max-w-sm space-y-4 overflow-hidden rounded-lg bg-white p-8 pt-0 shadow"
       >
-        <h1 className="-mx-8 mb-4 bg-blue-900 px-8 py-4 text-xl font-bold text-center text-white">配送管理システム Ver0.9</h1>
+        {/* サイドバー上部（Sidebar.tsx）と同じデザイン */}
+        <div className="-mx-8 mb-4 flex items-center justify-center gap-3 bg-blue-900 px-8 py-4">
+          <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg bg-blue-600 text-white">
+            <Route className="h-6 w-6" />
+          </span>
+          <div>
+            <h1 className="text-xl font-bold leading-tight text-white">配送管理システム</h1>
+            <p className="text-xs tracking-wide text-blue-300">Delivery Manager · v0.9</p>
+          </div>
+        </div>
         {error && (
           <p className="rounded bg-red-50 p-2 text-sm text-red-600">{error}</p>
         )}
