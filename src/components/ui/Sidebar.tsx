@@ -162,8 +162,14 @@ export default function Sidebar() {
 
   return (
     <aside className="flex h-screen w-64 flex-col border-r border-gray-200 bg-white">
-      <div className="border-b border-gray-200 bg-blue-900 px-4 py-4">
-        <h1 className="text-base font-bold text-white">配送管理システム Ver0.9</h1>
+      <div className="flex items-center gap-3 border-b border-gray-200 bg-blue-900 px-4 py-3">
+        <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-blue-600 text-white">
+          <Route className="h-5 w-5" />
+        </span>
+        <div className="min-w-0">
+          <h1 className="text-base font-bold leading-tight text-white">配送管理システム</h1>
+          <p className="text-[11px] tracking-wide text-blue-300">Delivery Manager · v0.9</p>
+        </div>
       </div>
       <nav className="flex-1 space-y-4 overflow-y-auto p-2">
         {/* 一般権限で唯一データを入力する画面のため、参照用の業務メニューとは分けてボタンとして置く */}
