@@ -9,10 +9,11 @@ const CONTAINER_CLASSES: Record<Tint, string> = {
   gray: 'bg-gray-200 border-gray-300',
 };
 
+// サイドバーのメニュー区分の見出し（Sidebar.tsxのrenderZoneLabel）と同じ色のタイル
 const BADGE_CLASSES: Record<Tint, string> = {
-  blue: 'bg-white text-blue-600',
-  blueSoft: 'bg-white text-indigo-600',
-  gray: 'bg-white text-gray-600',
+  blue: 'bg-blue-600 text-white',
+  blueSoft: 'bg-indigo-600 text-white',
+  gray: 'bg-gray-600 text-white',
 };
 
 const TITLE_CLASSES: Record<Tint, string> = {
