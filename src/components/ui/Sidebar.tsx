@@ -7,7 +7,7 @@ import { format } from 'date-fns';
 import { signOut, useSession } from 'next-auth/react';
 import {
   LayoutDashboard,
-  Package,
+  Plus,
   ClipboardList,
   FilePlus2,
   Truck,
@@ -35,7 +35,6 @@ const ROLE_RANK: Record<string, number> = {
 
 const NAV_ZONE_1: NavItem[] = [
   { href: '/dashboard', label: 'ダッシュボード', icon: LayoutDashboard },
-  { href: '/pool', label: '荷物受付', icon: Package },
   { href: '/plans', label: '配送計画一覧', icon: ClipboardList },
   { href: '/tracking', label: 'リアルタイム追跡', icon: MapPin },
 ];
@@ -137,11 +136,6 @@ export default function Sidebar() {
           <Icon className="h-4 w-4 shrink-0" />
           {item.label}
         </span>
-        {item.href === '/pool' && unassignedCount > 0 && (
-          <span className="shrink-0 rounded-full bg-amber-500 px-2 py-0.5 text-xs font-semibold text-white">
-            {unassignedCount}
-          </span>
-        )}
         {item.href === '/capacity-overview' && (capacityOverCount + capacityTimeOverCount > 0 || capacityWarningCount > 0) && (
           <span className="flex shrink-0 items-center gap-1">
             {capacityOverCount + capacityTimeOverCount > 0 && (
@@ -172,6 +166,24 @@ export default function Sidebar() {
         <h1 className="text-base font-bold text-white">配送管理システム Ver0.9</h1>
       </div>
       <nav className="flex-1 space-y-4 overflow-y-auto p-2">
+        {/* 一般権限で唯一データを入力する画面のため、参照用の業務メニューとは分けてボタンとして置く */}
+        <Link
+          href="/pool"
+          className={`flex items-center justify-between gap-2 whitespace-nowrap mt-4 rounded-md bg-blue-600 px-2.5 py-1text-sm font-semibold text-white hover:bg-blue-700 ${
+            isActive('/pool') ? 'ring-2 ring-blue-300 ring-offset-1' : ''
+          }`}
+        >
+          <span className="flex items-center gap-2">
+            <Plus className="h-4 w-4 shrink-0" />
+            荷物を受け付ける
+          </span>
+          {unassignedCount > 0 && (
+            <span className="shrink-0 rounded-full bg-white px-2 py-0.5 text-xs font-semibold text-blue-600">
+              {unassignedCount}
+            </span>
+          )}
+        </Link>
+
         <div className="space-y-0.5 rounded-lg bg-blue-100 p-1.5">
           <p className="flex items-center gap-1.5 px-2.5 pb-1 pt-0.5 text-xs font-semibold text-blue-600">
             <LayoutGrid className="h-3.5 w-3.5" />
@@ -184,7 +196,7 @@ export default function Sidebar() {
           <div className="space-y-0.5 rounded-lg bg-indigo-100 p-1.5">
             <p className="flex items-center gap-1.5 px-2.5 pb-1 pt-0.5 text-xs font-semibold text-indigo-600">
               <Route className="h-3.5 w-3.5" />
-              配送管理
+              配送管理メニュー
             </p>
             {NAV_ZONE_2.map(item => renderZoneItem(item, 'blueSoft', true))}
           </div>
@@ -194,7 +206,7 @@ export default function Sidebar() {
           <div className="space-y-0.5 rounded-lg bg-gray-200 p-1.5">
             <p className="flex items-center gap-1.5 px-2.5 pb-1 pt-0.5 text-xs font-semibold text-gray-600">
               <Database className="h-3.5 w-3.5" />
-              マスタ管理
+              マスタ管理メニュー
             </p>
             {MASTER_NAV_ITEMS.map(item => renderZoneItem(item, 'gray', true))}
           </div>
