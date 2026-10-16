@@ -160,6 +160,20 @@ export default function Sidebar() {
     );
   }
 
+  // 区分の見出し。アイコンはヘッダーと同じ形の色付きタイルに入れる
+  function renderZoneLabel(Icon: LucideIcon, label: string, tint: 'blue' | 'blueSoft' | 'gray') {
+    const tileClass = tint === 'gray' ? 'bg-gray-600' : tint === 'blue' ? 'bg-blue-600' : 'bg-indigo-600';
+    const textClass = tint === 'gray' ? 'text-gray-800' : tint === 'blue' ? 'text-blue-900' : 'text-indigo-900';
+    return (
+      <p className={`flex items-center gap-2 px-1.5 pb-1.5 pt-0.5 text-sm font-semibold ${textClass}`}>
+        <span className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-white ${tileClass}`}>
+          <Icon className="h-3.5 w-3.5" />
+        </span>
+        {label}
+      </p>
+    );
+  }
+
   return (
     <aside className="flex h-screen w-64 flex-col border-r border-gray-200 bg-white">
       <div className="flex items-center gap-3 border-b border-gray-200 bg-blue-900 px-4 py-3">
@@ -191,29 +205,20 @@ export default function Sidebar() {
         </Link>
 
         <div className="space-y-0.5 rounded-lg bg-blue-100 p-1.5">
-          <p className="flex items-center gap-1.5 px-2.5 pb-1 pt-0.5 text-xs font-semibold text-blue-600">
-            <LayoutGrid className="h-3.5 w-3.5" />
-            業務メニュー
-          </p>
+          {renderZoneLabel(LayoutGrid, '業務メニュー', 'blue')}
           {NAV_ZONE_1.map(item => renderZoneItem(item, 'blue', true))}
         </div>
 
         {canSeeDeliveryZone && (
           <div className="space-y-0.5 rounded-lg bg-indigo-100 p-1.5">
-            <p className="flex items-center gap-1.5 px-2.5 pb-1 pt-0.5 text-xs font-semibold text-indigo-600">
-              <Route className="h-3.5 w-3.5" />
-              配送管理メニュー
-            </p>
+            {renderZoneLabel(Route, '配送管理メニュー', 'blueSoft')}
             {NAV_ZONE_2.map(item => renderZoneItem(item, 'blueSoft', true))}
           </div>
         )}
 
         {canSeeMasterZone && (
           <div className="space-y-0.5 rounded-lg bg-gray-200 p-1.5">
-            <p className="flex items-center gap-1.5 px-2.5 pb-1 pt-0.5 text-xs font-semibold text-gray-600">
-              <Database className="h-3.5 w-3.5" />
-              マスタ管理メニュー
-            </p>
+            {renderZoneLabel(Database, 'マスタ管理メニュー', 'gray')}
             {MASTER_NAV_ITEMS.map(item => renderZoneItem(item, 'gray', true))}
           </div>
         )}
