@@ -16,6 +16,7 @@ import {
 } from 'date-fns';
 import { ClipboardList, Calendar as CalendarIcon, ChevronLeft, ChevronRight, ChevronDown, ChevronUp } from 'lucide-react';
 import PageHeader from '@/components/ui/PageHeader';
+import RefreshButton from '@/components/ui/RefreshButton';
 import DispatchGanttChart, { GanttRoute, splitPlateNo } from '@/components/plans/DispatchGanttChart';
 import RelativeDayBadge from '@/components/plans/RelativeDayBadge';
 import { RouteStatus } from '@prisma/client';
@@ -152,12 +153,36 @@ function PlansPageContent() {
   const [lunchBreakEnd, setLunchBreakEnd] = useState<string | undefined>(undefined);
   const [depotCenter, setDepotCenter] = useState<{ lat: number; lng: number } | undefined>(undefined);
 
+  const [updatedAt, setUpdatedAt] = useState<Date | null>(null);
+  const [refreshing, setRefreshing] = useState(false);
+  const [refreshFailed, setRefreshFailed] = useState(false);
+  // 日付を切り替えた直後に、前の日付の応答が遅れて届いても反映しないため
+  const latestDateRef = useRef(date);
+
+  // 荷物一覧の開閉やスクロール位置を崩さないよう、自動では読み直さず「更新」ボタンでだけ読み直す
   async function fetchRoutes() {
-    const res = await fetch(`/api/plans?date=${date}`);
-    setRoutes(await res.json());
+    const target = date;
+    try {
+      const res = await fetch(`/api/plans?date=${target}`);
+      if (!res.ok) throw new Error();
+      const json = await res.json();
+      if (latestDateRef.current !== target) return;
+      setRoutes(json);
+      setUpdatedAt(new Date());
+      setRefreshFailed(false);
+    } catch {
+      if (latestDateRef.current === target) setRefreshFailed(true);
+    }
+  }
+
+  async function handleRefresh() {
+    setRefreshing(true);
+    await Promise.all([fetchRoutes(), fetchMonthDays(calendarMonth)]);
+    setRefreshing(false);
   }
 
   useEffect(() => {
+    latestDateRef.current = date;
     fetchRoutes();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [date]);
@@ -382,6 +407,12 @@ function PlansPageContent() {
             </option>
           ))}
         </select>
+        <RefreshButton
+          onRefresh={handleRefresh}
+          refreshing={refreshing}
+          updatedAt={updatedAt}
+          failed={refreshFailed}
+        />
       </div>
 
       <div>

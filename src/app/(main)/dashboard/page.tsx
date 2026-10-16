@@ -1,9 +1,10 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { format } from 'date-fns';
 import { LayoutDashboard } from 'lucide-react';
 import PageHeader from '@/components/ui/PageHeader';
+import RefreshButton from '@/components/ui/RefreshButton';
 import KpiCards from '@/components/dashboard/KpiCards';
 import DriverStatusTable from '@/components/dashboard/DriverStatusTable';
 import PlanSummaryList from '@/components/dashboard/PlanSummaryList';
@@ -55,6 +56,8 @@ type DashboardData = {
   routes: RouteSummary[];
 };
 
+const AUTO_REFRESH_MS = 30_000;
+
 function todayStr() {
   // toISOString()はUTC基準になり、日本時間の深夜0時〜朝9時台は日付が1日ずれるため使わない
   return format(new Date(), 'yyyy-MM-dd');
@@ -64,14 +67,46 @@ export default function DashboardPage() {
   const [date, setDate] = useState(todayStr());
   const [data, setData] = useState<DashboardData | null>(null);
   const [error, setError] = useState('');
+  const [updatedAt, setUpdatedAt] = useState<Date | null>(null);
+  const [refreshing, setRefreshing] = useState(false);
+  const [refreshFailed, setRefreshFailed] = useState(false);
+  // 日付を切り替えた直後に、前の日付の応答が遅れて届いても反映しないため
+  const latestDateRef = useRef(date);
 
+  // silent: 自動更新・更新ボタンからの読み直し。表示中の内容を消さずに差し替える
+  const load = useCallback(
+    async (silent: boolean) => {
+      if (silent) setRefreshing(true);
+      else setData(null);
+      try {
+        const res = await fetch(`/api/dashboard?date=${date}`);
+        if (!res.ok) throw new Error();
+        const json = await res.json();
+        if (latestDateRef.current !== date) return;
+        setData(json);
+        setUpdatedAt(new Date());
+        setRefreshFailed(false);
+        setError('');
+      } catch {
+        if (latestDateRef.current !== date) return;
+        if (silent) setRefreshFailed(true);
+        else setError('データの取得に失敗しました');
+      } finally {
+        if (silent) setRefreshing(false);
+      }
+    },
+    [date]
+  );
+
+  // 進み具合を見張る画面のため、開いたままでも一定間隔で読み直す（別のタブを見ている間は止める）
   useEffect(() => {
-    setData(null);
-    fetch(`/api/dashboard?date=${date}`)
-      .then(res => res.json())
-      .then(setData)
-      .catch(() => setError('データの取得に失敗しました'));
-  }, [date]);
+    latestDateRef.current = date;
+    load(false);
+    const timer = setInterval(() => {
+      if (!document.hidden) load(true);
+    }, AUTO_REFRESH_MS);
+    return () => clearInterval(timer);
+  }, [date, load]);
 
   if (error) return <p className="text-red-600">{error}</p>;
   if (!data) return <p className="text-gray-500">読み込み中...</p>;
@@ -106,6 +141,14 @@ export default function DashboardPage() {
                 今日に戻す
               </button>
             )}
+            <div className="ml-2 border-l border-blue-200 pl-3">
+              <RefreshButton
+                onRefresh={() => load(true)}
+                refreshing={refreshing}
+                updatedAt={updatedAt}
+                failed={refreshFailed}
+              />
+            </div>
           </div>
         }
       />
