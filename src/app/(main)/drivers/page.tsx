@@ -13,9 +13,10 @@ type Driver = {
   name: string;
   phone: string;
   type: DriverType;
-  licenseNo: string;
   status: string;
 };
+
+type DuplicateDriver = { name: string; phone: string; type: DriverType; status: string };
 
 const TYPE_TABS: DriverType[] = ['FIXED_ROUTE', 'REGULAR', 'SALES'];
 
@@ -24,7 +25,6 @@ export default function DriversPage() {
   const [tab, setTab] = useState<DriverType>('FIXED_ROUTE');
   const [name, setName] = useState('');
   const [phone, setPhone] = useState('');
-  const [licenseNo, setLicenseNo] = useState('');
   const [type, setType] = useState<DriverType>('FIXED_ROUTE');
   const [error, setError] = useState('');
   const [saving, setSaving] = useState(false);
@@ -45,16 +45,30 @@ export default function DriversPage() {
     setSaving(true);
     setError('');
     try {
-      const res = await fetch('/api/drivers', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name, phone, licenseNo, type }),
-      });
-      const data = await res.json();
+      const post = (allowDuplicateName: boolean) =>
+        fetch('/api/drivers', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ name, phone, type, allowDuplicateName }),
+        });
+      let res = await post(false);
+      let data = await res.json();
+      // 同じ名前のドライバーがいる場合は、二重登録でないかを確かめてから登録する
+      if (res.status === 409 && data.duplicateName) {
+        const list = (data.existing as DuplicateDriver[])
+          .map(d => `・${d.name}（${DRIVER_TYPE_LABELS[d.type]}、${d.phone}${d.status === 'ACTIVE' ? '' : '、削除済み'}）`)
+          .join('\n');
+        const ok = await confirmDialog(
+          `同じ名前のドライバーがすでに登録されています。\n${list}\n\n別の人として「${name}」を登録しますか？`,
+          { confirmLabel: '登録する' }
+        );
+        if (!ok) return;
+        res = await post(true);
+        data = await res.json();
+      }
       if (!res.ok) throw new Error(data.error);
       setName('');
       setPhone('');
-      setLicenseNo('');
       fetchDrivers();
     } catch (err) {
       setError(err instanceof Error ? err.message : '登録に失敗しました');
@@ -98,7 +112,7 @@ export default function DriversPage() {
       <div className="rounded-lg border border-panel-line bg-panel p-4 shadow-sm">
         <h2 className="mb-3 text-sm font-semibold text-gray-700">新規登録</h2>
         {error && <p className="mb-2 rounded bg-red-50 p-2 text-sm text-red-600">{error}</p>}
-        <form onSubmit={handleSubmit} className="grid grid-cols-1 gap-3 sm:grid-cols-5">
+        <form onSubmit={handleSubmit} className="grid grid-cols-1 gap-3 sm:grid-cols-4">
           <input
             required
             placeholder="名称"
@@ -111,13 +125,6 @@ export default function DriversPage() {
             placeholder="電話番号"
             value={phone}
             onChange={e => setPhone(e.target.value)}
-            className="rounded border border-gray-300 px-3 py-2 text-sm sm:col-span-1"
-          />
-          <input
-            required
-            placeholder="免許番号"
-            value={licenseNo}
-            onChange={e => setLicenseNo(e.target.value)}
             className="rounded border border-gray-300 px-3 py-2 text-sm sm:col-span-1"
           />
           <select
@@ -158,7 +165,6 @@ export default function DriversPage() {
             <tr>
               <th className="px-4 py-2 text-left font-medium text-gray-500">名称</th>
               <th className="px-4 py-2 text-left font-medium text-gray-500">電話番号</th>
-              <th className="px-4 py-2 text-left font-medium text-gray-500">免許番号</th>
               <th className="px-4 py-2 text-left font-medium text-gray-500">ステータス</th>
               <th className="px-4 py-2 text-left font-medium text-gray-500">操作</th>
             </tr>
@@ -170,7 +176,6 @@ export default function DriversPage() {
               <tr key={d.id} className={inactive ? 'bg-gray-50' : ''}>
                 <td className={`px-4 py-2 ${inactive ? 'text-gray-500' : ''}`}>{d.name}</td>
                 <td className={`px-4 py-2 ${inactive ? 'text-gray-500' : ''}`}>{d.phone}</td>
-                <td className={`px-4 py-2 ${inactive ? 'text-gray-500' : ''}`}>{d.licenseNo}</td>
                 <td className={`px-4 py-2 ${inactive ? 'text-gray-500' : ''}`}>{d.status === 'ACTIVE' ? '稼働中' : '停止中'}</td>
                 <td className="flex gap-3 px-4 py-2">
                   {d.status === 'ACTIVE' ? (

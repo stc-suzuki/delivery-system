@@ -64,54 +64,29 @@ async function main() {
   }
   console.log('トラック15台作成完了');
 
+  // 同じ名前のドライバーがまだいなければ作る（2回目以降の実行で二重に作らないため。名前は連番付きで重複しない）
+  async function ensureDriver(name: string, phone: string, type: DriverType) {
+    const existing = await prisma.driver.findFirst({ where: { name } });
+    if (!existing) {
+      await prisma.driver.create({ data: { name, phone, type, status: 'ACTIVE' } });
+    }
+  }
+
   // 固定ルートドライバー10名
   for (let i = 1; i <= 10; i++) {
-    const licenseNo = `FIX-${String(i).padStart(4, '0')}`;
-    await prisma.driver.upsert({
-      where: { licenseNo },
-      update: {},
-      create: {
-        name: `${SURNAMES[i % SURNAMES.length]} 太郎${i}`,
-        phone: `090-0000-${String(1000 + i)}`,
-        type: DriverType.FIXED_ROUTE,
-        licenseNo,
-        status: 'ACTIVE',
-      },
-    });
+    await ensureDriver(`${SURNAMES[i % SURNAMES.length]} 太郎${i}`, `090-0000-${String(1000 + i)}`, DriverType.FIXED_ROUTE);
   }
   console.log('固定ルートドライバー10名作成完了');
 
   // 専任ドライバー10名
   for (let i = 1; i <= 10; i++) {
-    const licenseNo = `REG-${String(i).padStart(4, '0')}`;
-    await prisma.driver.upsert({
-      where: { licenseNo },
-      update: {},
-      create: {
-        name: `${SURNAMES[(i + 10) % SURNAMES.length]} 次郎${i}`,
-        phone: `080-0000-${String(2000 + i)}`,
-        type: DriverType.REGULAR,
-        licenseNo,
-        status: 'ACTIVE',
-      },
-    });
+    await ensureDriver(`${SURNAMES[(i + 10) % SURNAMES.length]} 次郎${i}`, `080-0000-${String(2000 + i)}`, DriverType.REGULAR);
   }
   console.log('専任ドライバー10名作成完了');
 
   // 営業ドライバー10名
   for (let i = 1; i <= 10; i++) {
-    const licenseNo = `SALES-${String(i).padStart(4, '0')}`;
-    await prisma.driver.upsert({
-      where: { licenseNo },
-      update: {},
-      create: {
-        name: `${SURNAMES[(i + 5) % SURNAMES.length]} 三郎${i}`,
-        phone: `070-0000-${String(3000 + i)}`,
-        type: DriverType.SALES,
-        licenseNo,
-        status: 'ACTIVE',
-      },
-    });
+    await ensureDriver(`${SURNAMES[(i + 5) % SURNAMES.length]} 三郎${i}`, `070-0000-${String(3000 + i)}`, DriverType.SALES);
   }
   console.log('営業ドライバー10名作成完了');
 

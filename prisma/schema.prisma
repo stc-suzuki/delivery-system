@@ -52,7 +52,6 @@ model Driver {
   name       String
   phone      String
   type       DriverType
-  licenseNo  String     @unique
   status     DriverStatus @default(ACTIVE)
   createdAt  DateTime   @default(now())
   routes     PlanRoute[]
