@@ -31,7 +31,8 @@ const DESCRIPTION_CLASSES: Record<Tint, string> = {
 type Props = {
   icon: LucideIcon;
   title: ReactNode;
-  description: ReactNode;
+  // 省略した画面（ダッシュボード）は1行の見出しになる
+  description?: ReactNode;
   tint: Tint;
   action?: ReactNode;
   showDeliveryAdminBadge?: boolean;
@@ -39,7 +40,7 @@ type Props = {
 
 export default function PageHeader({ icon: Icon, title, description, tint, action, showDeliveryAdminBadge }: Props) {
   return (
-    <div className={`flex flex-wrap items-start gap-3 rounded-lg border p-4 ${CONTAINER_CLASSES[tint]}`}>
+    <div className={`flex flex-wrap gap-3 rounded-lg border p-4 ${description ? 'items-start' : 'items-center'} ${CONTAINER_CLASSES[tint]}`}>
       <div className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-lg shadow-sm ${BADGE_CLASSES[tint]}`}>
         <Icon className="h-[18px] w-[18px]" />
       </div>
@@ -50,7 +51,7 @@ export default function PageHeader({ icon: Icon, title, description, tint, actio
             <span className="rounded-full bg-indigo-600 px-2.5 py-0.5 text-xs font-semibold text-white">配送管理者</span>
           )}
         </div>
-        <p className={`mt-0.5 text-sm ${DESCRIPTION_CLASSES[tint]}`}>{description}</p>
+        {description && <p className={`mt-0.5 text-sm ${DESCRIPTION_CLASSES[tint]}`}>{description}</p>}
       </div>
       {action && <div className="shrink-0">{action}</div>}
     </div>

@@ -101,7 +101,10 @@ export default function PlanSummaryList({ routes }: { routes: RouteSummary[] }) 
   return (
     <div className="space-y-3">
       <div className="flex items-center gap-3">
-        <h2 className="text-base font-semibold text-gray-800">本日の配送ルート</h2>
+        <h2 className="text-base font-semibold text-gray-800">
+          本日の配送ルート
+          <span className="ml-2 text-sm font-normal text-[#4B5563]">{routes.length}件</span>
+        </h2>
         <select
           value={sortKey}
           onChange={e => setSortKey(e.target.value as SortKey)}

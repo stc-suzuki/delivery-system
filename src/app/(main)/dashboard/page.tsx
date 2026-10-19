@@ -5,7 +5,6 @@ import { format } from 'date-fns';
 import { LayoutDashboard } from 'lucide-react';
 import PageHeader from '@/components/ui/PageHeader';
 import RefreshButton from '@/components/ui/RefreshButton';
-import KpiCards from '@/components/dashboard/KpiCards';
 import DriverStatusTable from '@/components/dashboard/DriverStatusTable';
 import PlanSummaryList from '@/components/dashboard/PlanSummaryList';
 import type { RouteOperationStatus } from '@/lib/routeOperationStatus';
@@ -116,7 +115,6 @@ export default function DashboardPage() {
       <PageHeader
         icon={LayoutDashboard}
         title="ダッシュボード"
-        description="本日の配送状況をひと目で確認できます。"
         tint="blue"
         action={
           <div className="flex items-center gap-2">
@@ -151,13 +149,6 @@ export default function DashboardPage() {
             </div>
           </div>
         }
-      />
-      <KpiCards
-        routeCount={data.routeCount}
-        completedCount={data.completedCount}
-        inProgressCount={data.inProgressCount}
-        unassignedTrucks={data.unassignedTrucks}
-        totalTrucks={data.totalTrucks}
       />
       <DriverStatusTable drivers={data.drivers} />
       <PlanSummaryList routes={data.routes} />
