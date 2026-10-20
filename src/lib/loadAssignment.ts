@@ -39,6 +39,9 @@ export interface AssignTruckInput {
    *  既存の便で収まりきらない分は「＋便を追加」で明示的に便を増やしてから、
    *  もう一度この関数を呼び出す運用にする */
   trips: AssignTruckTripInput[];
+  /** このトラックの出発時刻（稼働トラックの登録画面で保存した、ルートごとの出発時刻）。
+   *  未指定ならassignStopsToTrucksの引数departureTime（システム設定の出発時刻）を使う */
+  departureTime?: Date;
 }
 
 export type StopUnassignedReason = 'SIZE_OVER' | 'CAPACITY_OVER';
@@ -152,7 +155,8 @@ export function assignStopsToTrucks(
     }
 
     const nonConflicting = candidates.filter(
-      ({ si }) => !hasTimeConflict([...assignedStopsBySlot[si], stop], departureTime, depot)
+      ({ slot, si }) =>
+        !hasTimeConflict([...assignedStopsBySlot[si], stop], trucks[slot.truckIndex].departureTime ?? departureTime, depot)
     );
     const pool = nonConflicting.length > 0 ? nonConflicting : candidates;
 

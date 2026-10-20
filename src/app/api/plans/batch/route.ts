@@ -4,6 +4,7 @@ import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
 import { checkTruckAvailable, checkDriverAvailable, checkDriverNotOnDayOff } from '@/lib/planValidation';
 import { isDefaultDayOff } from '@/lib/driverSchedule';
+import { reorderRoute } from '@/lib/routeReorder';
 
 // 指定日のまだ稼働していない（PENDING）ルートの構成（使用するトラック・ドライバーの組み合わせ）を
 // 一括で登録・変更する。新規作成（その日にまだPENDINGルートが1件もない状態から作る）・既存PENDING
@@ -120,6 +121,13 @@ export async function POST(req: NextRequest) {
               ...(departureDateTime !== undefined && { departureTime: departureDateTime }),
             },
           });
+          // 出発時刻を変えた場合、割当済みの配送先の到着予定（scheduledTime）は割当時に保存した値のままなので、
+          // 新しい出発時刻で計算し直す（しないとガントチャート・ドライバー画面に古い時刻が残る）
+          const departureChanged =
+            departureDateTime !== undefined && existing.departureTime?.getTime() !== departureDateTime.getTime();
+          if (departureChanged && existing.stops.length > 0) {
+            await reorderRoute(tx, existing.id);
+          }
           ids.push(existing.id);
         } else {
           const created = await tx.planRoute.create({

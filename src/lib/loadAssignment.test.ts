@@ -109,4 +109,20 @@ describe('assignStopsToTrucks（AI提案の割当）', () => {
     expect(stopIdsOf(result, 't1')).toEqual(['s1']);
     expect(result.unassignedStops).toEqual([{ stopId: 's2', reason: 'CAPACITY_OVER' }]);
   });
+
+  it('到着希望時刻の判定は、トラックごとの出発時刻（稼働トラックの登録画面の値）で行う', () => {
+    // システム設定の出発時刻は8:00だが、t1だけその日の出発を10:00にしている。
+    // 9:00着希望の配送先（本社の真北15km＝30分）は、10:00出発のt1では間に合わないため8:00出発のt2へ回す
+    const settingDeparture = new Date('2026-10-14T08:00:00+09:00');
+    const timed: PoolStopInput = { ...stopAt('s1', 0, 1, 15), arrivalTime: '2026-10-14T09:00:00+09:00' };
+    const result = assignStopsToTrucks(
+      [truck('t1', 10, { departureTime: new Date('2026-10-14T10:00:00+09:00') }), truck('t2', 10)],
+      [timed],
+      settingDeparture,
+      'SWEEP_BALANCED',
+      depot
+    );
+    expect(stopIdsOf(result, 't1')).toEqual([]);
+    expect(stopIdsOf(result, 't2')).toEqual(['s1']);
+  });
 });

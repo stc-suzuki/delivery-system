@@ -4,7 +4,7 @@ import { canEditRoute, getEditHorizonDays } from '@/lib/planEditPolicy';
 import { MAX_STOPS_PER_ROUTE } from '@/lib/planValidation';
 import { effectiveCapacityM3, truckBed } from '@/lib/loadCapacity';
 import { assignStopsToTrucks, AssignTruckInput, PoolStopInput } from '@/lib/loadAssignment';
-import { reorderRoute } from '@/lib/routeReorder';
+import { reorderRoute, resolveDeparture } from '@/lib/routeReorder';
 
 // 「参考の割当案をすべて反映」：/suggest と同じFFD計算を行い、その結果をそのまま
 // 手動割当として確定する。すでに手動割当済みの停車地には一切触れない
@@ -69,6 +69,9 @@ export async function POST(
         capacityM3: effectiveCapacityM3(r.truck.capacityM3, settings.loadUtilizationPercent),
         bed: truckBed(r.truck),
         trips: r.trips.map(t => ({ tripId: t.id, tripIndex: t.tripIndex, usedVolume: volumeByTripId.get(t.id) ?? 0 })),
+        // 稼働トラックの登録画面で日ごとに保存した出発時刻を使う（無ければシステム設定の出発時刻）。
+        // 割当後の到着予定（reorderRoute）と同じ出発時刻で、到着希望時刻に間に合うかを判定するため
+        departureTime: resolveDeparture(r.routeDate, r.departureTime, settings.defaultDepartureTime),
       };
     });
     const poolStopInputs: PoolStopInput[] = poolStops.map(s => ({

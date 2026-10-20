@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { effectiveCapacityM3, truckBed } from '@/lib/loadCapacity';
 import { assignStopsToTrucks, AssignTruckInput, PoolStopInput } from '@/lib/loadAssignment';
+import { resolveDeparture } from '@/lib/routeReorder';
 
 // 手順③：自動割当（FFD）はあくまで参考データ。何も永続化しない。
 // [id]で指定したルートと同日でまだ稼働していない全ルート（PENDING）、
@@ -60,6 +61,9 @@ export async function GET(
         capacityM3: effectiveCapacityM3(r.truck.capacityM3, settings.loadUtilizationPercent),
         bed: truckBed(r.truck),
         trips: r.trips.map(t => ({ tripId: t.id, tripIndex: t.tripIndex, usedVolume: volumeByTripId.get(t.id) ?? 0 })),
+        // 稼働トラックの登録画面で日ごとに保存した出発時刻を使う（無ければシステム設定の出発時刻）。
+        // 割当後の到着予定（reorderRoute）と同じ出発時刻で、到着希望時刻に間に合うかを判定するため
+        departureTime: resolveDeparture(r.routeDate, r.departureTime, settings.defaultDepartureTime),
       };
     });
 
