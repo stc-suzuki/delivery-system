@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { canEditRoute, getEditHorizonDays } from '@/lib/planEditPolicy';
-import { orderWithTimeBudget, estimateStopTimes, skipLunchBreak, addTimeOutsideLunch, haversine, AVERAGE_SPEED_KMH } from '@/lib/routeOptimizer';
+import { orderWithTimeBudget, estimateStopTimes, skipLunchBreak, addTimeOutsideLunch, travelTimeMs, travelModelFromSettings } from '@/lib/routeOptimizer';
 import { validatePackagesInput, MAX_STOPS_PER_ROUTE, PackageInput } from '@/lib/planValidation';
 import { checkCapacityOverflow, effectiveCapacityM3, fitsBed, truckBed } from '@/lib/loadCapacity';
 
@@ -299,7 +299,7 @@ export async function POST(
       startTime =
         openTrip!.departureTime && openTrip!.departureTime.getTime() > now.getTime() ? openTrip!.departureTime : now;
     } else if (newLocationIds.length > 0) {
-      const travelToDepotMs = (haversine(currentPos, depot) / AVERAGE_SPEED_KMH) * 60 * 60 * 1000;
+      const travelToDepotMs = travelTimeMs(currentPos, depot, travelModelFromSettings(settings));
       const reloadMs = settings.reloadDurationMinutes * 60 * 1000;
       // 昼休みは運転も積み込みも止めて休む。本社へ戻る途中・積み込みの途中で昼休みに入れば、
       // 休憩明けに残りを済ませる（estimateStopTimesの各レッグと同じ手順）
@@ -312,8 +312,9 @@ export async function POST(
       );
     }
 
-    const ordered = orderWithTimeBudget(startPos, startTime, routeCombined, lunchBreak);
-    const timed = estimateStopTimes(startPos, startTime, ordered, lunchBreak, settings.defaultStopDurationMinutes);
+    const travel = travelModelFromSettings(settings);
+    const ordered = orderWithTimeBudget(startPos, startTime, routeCombined, lunchBreak, travel);
+    const timed = estimateStopTimes(startPos, startTime, ordered, lunchBreak, settings.defaultStopDurationMinutes, travel);
 
     timed.forEach(stop => {
       if (stop.timeConflict) {

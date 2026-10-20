@@ -16,6 +16,9 @@ type Settings = {
   assumedTripsPerDay: number;
   reloadDurationMinutes: number;
   assignmentStrategy: 'SWEEP' | 'SWEEP_BALANCED';
+  averageSpeedKmh: number;
+  roadDetourFactor: number;
+  perLegTravelMinutes: number;
   depotName: string;
   depotAddress: string;
   depotLat: number;
@@ -70,6 +73,12 @@ export default function SettingsPage() {
   if (!settings) {
     return <p className="text-gray-500">読み込み中...</p>;
   }
+
+  // 設定画面での見積もり例（lib/routeOptimizerのtravelTimeMsと同じ式）。入力途中の0や空欄でも表示が崩れないようにする
+  const estimateLegMinutes = (km: number) =>
+    settings.averageSpeedKmh > 0
+      ? Math.round(settings.perLegTravelMinutes + ((km * settings.roadDetourFactor) / settings.averageSpeedKmh) * 60)
+      : '-';
 
   return (
     <div className="max-w-3xl space-y-6">
@@ -127,6 +136,67 @@ export default function SettingsPage() {
               この時刻までに配達を終えられるかどうかを、荷物受付状況の確認画面での時間超過チェックの基準にします。
             </p>
           </div>
+        </SettingsCard>
+
+        <SettingsCard title="移動時間の見積もり">
+          <p className="text-xs text-[#4B5563]">
+            配送先から配送先（本社を含む）への移動時間は、実際の道路ではなく2点間の直線距離から次の式で見積もります。到着予定時刻・定時超過の判定・AI提案のすべてで使います。
+            <br />
+            移動時間 ＝ 1区間ごとの固定時間 ＋ 直線距離 × 回り道係数 ÷ 平均時速
+          </p>
+          <div className="flex flex-wrap gap-6">
+            <div>
+              <label className="block text-sm font-medium text-gray-700">平均時速</label>
+              <div className="mt-1 flex items-center gap-2">
+                <input
+                  type="number"
+                  min={5}
+                  max={100}
+                  value={settings.averageSpeedKmh}
+                  onChange={e => setSettings({ ...settings, averageSpeedKmh: Number(e.target.value) })}
+                  className="w-24 rounded border border-gray-300 px-2 py-1.5 text-sm"
+                  required
+                />
+                <span className="text-sm text-[#4B5563]">km/h</span>
+              </div>
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700">回り道係数</label>
+              <div className="mt-1 flex items-center gap-2">
+                <input
+                  type="number"
+                  min={1}
+                  max={3}
+                  step={0.1}
+                  value={settings.roadDetourFactor}
+                  onChange={e => setSettings({ ...settings, roadDetourFactor: Number(e.target.value) })}
+                  className="w-24 rounded border border-gray-300 px-2 py-1.5 text-sm"
+                  required
+                />
+                <span className="text-sm text-[#4B5563]">倍</span>
+              </div>
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700">1区間ごとの固定時間</label>
+              <div className="mt-1 flex items-center gap-2">
+                <input
+                  type="number"
+                  min={0}
+                  max={60}
+                  value={settings.perLegTravelMinutes}
+                  onChange={e => setSettings({ ...settings, perLegTravelMinutes: Number(e.target.value) })}
+                  className="w-24 rounded border border-gray-300 px-2 py-1.5 text-sm"
+                  required
+                />
+                <span className="text-sm text-[#4B5563]">分</span>
+              </div>
+            </div>
+          </div>
+          <p className="text-xs text-[#4B5563]">
+            回り道係数は「道路の距離 ÷ 直線距離」の目安です。固定時間は信号・右左折・駐車などの分で、市街地の短い区間ほど効きます。
+            今の設定での見積もり：直線2km →{' '}
+            {estimateLegMinutes(2)}分、直線10km → {estimateLegMinutes(10)}分、直線30km → {estimateLegMinutes(30)}分
+          </p>
         </SettingsCard>
 
         <SettingsCard title="本部情報">

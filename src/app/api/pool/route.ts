@@ -128,6 +128,9 @@ export async function GET(req: NextRequest) {
     reloadDurationMinutes: systemSetting.reloadDurationMinutes,
     depotLat: systemSetting.depotLat,
     depotLng: systemSetting.depotLng,
+    averageSpeedKmh: systemSetting.averageSpeedKmh,
+    roadDetourFactor: systemSetting.roadDetourFactor,
+    perLegTravelMinutes: systemSetting.perLegTravelMinutes,
   });
   const finishTimes = timeOverflowResult.truckResults.map(r => r.finishTime).filter((t): t is Date => t != null);
   const timeOverflow = {

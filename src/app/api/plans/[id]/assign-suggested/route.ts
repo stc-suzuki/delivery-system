@@ -5,6 +5,7 @@ import { MAX_STOPS_PER_ROUTE } from '@/lib/planValidation';
 import { effectiveCapacityM3, truckBed } from '@/lib/loadCapacity';
 import { assignStopsToTrucks, AssignTruckInput, PoolStopInput } from '@/lib/loadAssignment';
 import { reorderRoute, resolveDeparture } from '@/lib/routeReorder';
+import { travelModelFromSettings } from '@/lib/routeOptimizer';
 
 // 「参考の割当案をすべて反映」：/suggest と同じFFD計算を行い、その結果をそのまま
 // 手動割当として確定する。すでに手動割当済みの停車地には一切触れない
@@ -88,7 +89,8 @@ export async function POST(
       poolStopInputs,
       departureTime,
       settings.assignmentStrategy,
-      { lat: settings.depotLat, lng: settings.depotLng }
+      { lat: settings.depotLat, lng: settings.depotLng },
+      travelModelFromSettings(settings)
     );
     const routeIdByTruckId = new Map(batchRoutes.map(r => [r.truckId, r.id]));
 

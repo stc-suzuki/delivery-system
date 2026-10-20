@@ -1,5 +1,5 @@
 import { Prisma } from '@prisma/client';
-import { addTimeOutsideLunch, LunchBreak, Coord } from './routeOptimizer';
+import { addTimeOutsideLunch, LunchBreak, Coord, travelModelFromSettings } from './routeOptimizer';
 import { planTrips } from './tripPlanning';
 
 type Tx = Prisma.TransactionClient;
@@ -81,7 +81,8 @@ export async function reorderRoute(tx: Tx, routeId: string): Promise<{ warnings:
     tripsStops,
     settings.reloadDurationMinutes,
     lunchBreak,
-    settings.defaultStopDurationMinutes
+    settings.defaultStopDurationMinutes,
+    travelModelFromSettings(settings)
   );
 
   let stopOrder = 0;
@@ -194,7 +195,8 @@ export async function rescheduleFollowingTrips(
     tripsStops,
     settings.reloadDurationMinutes,
     lunchBreak,
-    settings.defaultStopDurationMinutes
+    settings.defaultStopDurationMinutes,
+    travelModelFromSettings(settings)
   );
 
   const warnings: string[] = [];

@@ -5,7 +5,7 @@
 // 複数便対応：1台＝1回の積み込みで1日分を配りきる前提ではなく、容積上限に達するたびに本社を
 // 経由して積み直す（＝複数便に分かれる）ことを見込んでシミュレーションする（simulateFinish参照）。
 
-import { orderWithTimeBudget, estimateStopTimes, estimateReturnToDepotTime, addTimeOutsideLunch, TOCHIGI_DEPOT, LunchBreak, STOP_DURATION_MINUTES, Coord } from './routeOptimizer';
+import { orderWithTimeBudget, estimateStopTimes, estimateReturnToDepotTime, addTimeOutsideLunch, TOCHIGI_DEPOT, LunchBreak, STOP_DURATION_MINUTES, Coord, TravelModel, DEFAULT_TRAVEL_MODEL } from './routeOptimizer';
 import { AssignTruckInput, PoolStopInput } from './loadAssignment';
 import { fitsBed } from './loadCapacity';
 
@@ -58,9 +58,10 @@ function simulateFinish(
   stopDurationMinutes: number,
   depot: Coord,
   capacityM3: number | null,
-  reloadDurationMinutes: number
+  reloadDurationMinutes: number,
+  travel: TravelModel
 ): FinishSimulation {
-  const ordered = orderWithTimeBudget(depot, departureTime, stops, lunchBreak);
+  const ordered = orderWithTimeBudget(depot, departureTime, stops, lunchBreak, travel);
 
   let hasArrivalConflict = false;
   let tripStartTime = departureTime;
@@ -70,10 +71,10 @@ function simulateFinish(
 
   const closeTrip = () => {
     if (batch.length === 0) return;
-    const timed = estimateStopTimes(depot, tripStartTime, batch, lunchBreak, stopDurationMinutes);
+    const timed = estimateStopTimes(depot, tripStartTime, batch, lunchBreak, stopDurationMinutes, travel);
     hasArrivalConflict = hasArrivalConflict || timed.some(s => s.timeConflict);
     const last = timed[timed.length - 1];
-    finishTime = estimateReturnToDepotTime(depot, last, last.estimatedTime, lunchBreak, stopDurationMinutes);
+    finishTime = estimateReturnToDepotTime(depot, last, last.estimatedTime, lunchBreak, stopDurationMinutes, travel);
     batch = [];
     tripVolume = 0;
   };
@@ -103,7 +104,8 @@ export function checkTimeOverflow(
   reloadDurationMinutes: number,
   lunchBreak?: LunchBreak,
   stopDurationMinutes: number = STOP_DURATION_MINUTES,
-  depot: Coord = TOCHIGI_DEPOT
+  depot: Coord = TOCHIGI_DEPOT,
+  travel: TravelModel = DEFAULT_TRAVEL_MODEL
 ): TimeOverflowResult {
   if (trucks.length === 0) {
     return { overCapacityTime: false, truckResults: [] };
@@ -140,7 +142,8 @@ export function checkTimeOverflow(
         stopDurationMinutes,
         depot,
         effectiveCapacity.get(t.truckId) ?? null,
-        reloadDurationMinutes
+        reloadDurationMinutes,
+        travel
       ),
     }));
     // 到着希望時刻に矛盾しない候補を優先し、その中で「この荷物を積んだ場合に最も早く終わる
@@ -166,7 +169,8 @@ export function checkTimeOverflow(
       stopDurationMinutes,
       depot,
       effectiveCapacity.get(t.truckId) ?? null,
-      reloadDurationMinutes
+      reloadDurationMinutes,
+      travel
     );
     return { truckId: t.truckId, finishTime: sim.finishTime, overDeadline: sim.finishTime.getTime() > deliveryEndTime.getTime() };
   });

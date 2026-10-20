@@ -3,7 +3,7 @@
 import { checkTimeOverflow, TruckDayInput, TimeOverflowResult } from './timeOverflow';
 import { truckBed } from './loadCapacity';
 import { PoolStopInput } from './loadAssignment';
-import { LunchBreak } from './routeOptimizer';
+import { LunchBreak, travelModelFromSettings } from './routeOptimizer';
 import { resolveDeparture } from './routeReorder';
 
 export interface DayRouteInput {
@@ -30,6 +30,10 @@ export interface DaySettings {
   reloadDurationMinutes: number;
   depotLat: number;
   depotLng: number;
+  // 移動時間の見積もり（システム設定の平均時速・回り道係数・1区間の固定時間）
+  averageSpeedKmh: number;
+  roadDetourFactor: number;
+  perLegTravelMinutes: number;
 }
 
 function resolveTimeOnDate(date: Date, hhmm: string): Date {
@@ -68,6 +72,7 @@ export function computeDayTimeOverflow(
     settings.reloadDurationMinutes,
     lunchBreak,
     settings.defaultStopDurationMinutes,
-    { lat: settings.depotLat, lng: settings.depotLng }
+    { lat: settings.depotLat, lng: settings.depotLng },
+    travelModelFromSettings(settings)
   );
 }

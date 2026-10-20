@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { effectiveCapacityM3, truckBed } from '@/lib/loadCapacity';
 import { assignStopsToTrucks, AssignTruckInput, PoolStopInput } from '@/lib/loadAssignment';
+import { travelModelFromSettings } from '@/lib/routeOptimizer';
 import { resolveDeparture } from '@/lib/routeReorder';
 
 // 手順③：自動割当（FFD）はあくまで参考データ。何も永続化しない。
@@ -81,7 +82,8 @@ export async function GET(
       poolStopInputs,
       departureTime,
       settings.assignmentStrategy,
-      { lat: settings.depotLat, lng: settings.depotLng }
+      { lat: settings.depotLat, lng: settings.depotLng },
+      travelModelFromSettings(settings)
     );
 
     const routeIdByTruckId = new Map(batchRoutes.map(r => [r.truckId, r.id]));

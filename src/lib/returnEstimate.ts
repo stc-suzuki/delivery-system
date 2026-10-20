@@ -1,4 +1,4 @@
-import { estimateReturnToDepotTime, type Coord, type LunchBreak } from './routeOptimizer';
+import { estimateReturnToDepotTime, type Coord, type LunchBreak, type TravelModel } from './routeOptimizer';
 
 export type ReturnEstimateStop = {
   lat: number;
@@ -24,7 +24,7 @@ export function resolveLunchBreak(anchor: Date, lunchBreakStart: string, lunchBr
 // 到着予定が最も遅い配送先の予定時刻＋荷下ろし時間から計算する（ガントチャートの帰社予定と同じ）
 export function estimateReturnEta(
   stops: ReturnEstimateStop[],
-  options: { depot: Coord; lunchBreakStart: string; lunchBreakEnd: string; stopDurationMinutes: number }
+  options: { depot: Coord; lunchBreakStart: string; lunchBreakEnd: string; stopDurationMinutes: number; travel?: TravelModel }
 ): Date | null {
   const latestBy = (key: 'arrivedAt' | 'scheduledTime') =>
     stops
@@ -37,5 +37,5 @@ export function estimateReturnEta(
   const startTime = completed ? completed.arrivedAt! : base.scheduledTime!;
   const lunchBreak = resolveLunchBreak(startTime, options.lunchBreakStart, options.lunchBreakEnd);
   // 実績（arrivedAt）は荷下ろしが済んだ時点の記録のため、荷下ろし時間は足さない
-  return estimateReturnToDepotTime(options.depot, base, startTime, lunchBreak, completed ? 0 : options.stopDurationMinutes);
+  return estimateReturnToDepotTime(options.depot, base, startTime, lunchBreak, completed ? 0 : options.stopDurationMinutes, options.travel);
 }

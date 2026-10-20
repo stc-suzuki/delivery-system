@@ -15,6 +15,8 @@ import {
   estimateStopTimes,
   estimateReturnToDepotTime,
   addTimeOutsideLunch,
+  DEFAULT_TRAVEL_MODEL,
+  TravelModel,
 } from './routeOptimizer';
 
 export interface TripTimeResult<T> {
@@ -44,17 +46,18 @@ export function planTrips<T extends Coord & { arrivalTime?: string | null }>(
   tripsStops: T[][],
   reloadDurationMinutes: number,
   lunchBreak?: LunchBreak,
-  stopDurationMinutes: number = STOP_DURATION_MINUTES
+  stopDurationMinutes: number = STOP_DURATION_MINUTES,
+  travel: TravelModel = DEFAULT_TRAVEL_MODEL
 ): PlanTripsResult<T> {
   const trips: TripTimeResult<T>[] = [];
   let nextDepartureTime = firstDepartureTime;
 
   for (const stopsForTrip of tripsStops) {
-    const ordered = orderWithTimeBudget(depot, nextDepartureTime, stopsForTrip, lunchBreak);
-    const timed = estimateStopTimes(depot, nextDepartureTime, ordered, lunchBreak, stopDurationMinutes);
+    const ordered = orderWithTimeBudget(depot, nextDepartureTime, stopsForTrip, lunchBreak, travel);
+    const timed = estimateStopTimes(depot, nextDepartureTime, ordered, lunchBreak, stopDurationMinutes, travel);
     const last = timed[timed.length - 1];
     const returnedAt = last
-      ? estimateReturnToDepotTime(depot, last, last.estimatedTime, lunchBreak, stopDurationMinutes)
+      ? estimateReturnToDepotTime(depot, last, last.estimatedTime, lunchBreak, stopDurationMinutes, travel)
       : nextDepartureTime;
 
     trips.push({ departureTime: nextDepartureTime, stops: timed, returnedAt });

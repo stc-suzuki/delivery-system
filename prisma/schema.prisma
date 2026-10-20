@@ -273,6 +273,13 @@ model SystemSetting {
   reloadDurationMinutes      Int      @default(30)
   // AI提案（/suggest・/assign-suggested）が停車地をトラックへ振り分ける際の方式
   assignmentStrategy         AssignmentStrategy @default(SWEEP_BALANCED)
+  // 移動時間の見積もり（lib/routeOptimizerのtravelTimeMs）。道路の経路計算はせず、
+  // 「1区間ごとの固定時間＋直線距離×回り道係数÷平均時速」で近似する。初期値は2026-10-20に
+  // 宇都宮市内・県内の19区間をGoogleマップの所要時間と比べて決めた値（平均の誤差10.2分→4.5分）。
+  // それまでは直線距離÷時速30kmのみ（＝時速30・係数1.0・固定0分）
+  averageSpeedKmh            Int      @default(45)
+  roadDetourFactor           Float    @default(1.1)
+  perLegTravelMinutes        Int      @default(8)
   // 本社（車庫）の名称・住所・座標。ルート計算の出発・帰着地点として全体で共通利用する。
   // 座標は本部住所を国土地理院APIでジオコーディングした値（/api/settings PATCH時に自動更新）。
   // 初期値は旧・固定定数TOCHIGI_DEPOTと同じ座標（栃木県内の概算値。住所は未設定のまま運用開始）

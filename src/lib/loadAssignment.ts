@@ -4,7 +4,7 @@
 // 停車地（＝その停車地の荷物の合計）を単位として同じアルゴリズムを適用する。
 
 import { fitsBed, Dimensions } from './loadCapacity';
-import { orderWithTimeBudget, estimateStopTimes, TOCHIGI_DEPOT, bearingDeg, Coord } from './routeOptimizer';
+import { orderWithTimeBudget, estimateStopTimes, TOCHIGI_DEPOT, bearingDeg, Coord, TravelModel, DEFAULT_TRAVEL_MODEL } from './routeOptimizer';
 
 // SWEEP: 本社から見た方位角順に処理し、容量が許す限り同じトラックへ積み続ける（方面重視）。
 // SWEEP_BALANCED: 処理順はSWEEPと同じだが、今のトラックに積めなくなった際の切り替え先を
@@ -75,10 +75,10 @@ function stopFitsBed(stop: PoolStopInput, bed: Dimensions): boolean {
 
 // あるトラックに割り当てた停車地の集合が、到着希望時刻に移動時間の都合で間に合わないものを含むか判定する。
 // 到着希望時刻を持つ停車地が一つもなければ判定するまでもなく常にfalse
-function hasTimeConflict(assignedStops: PoolStopInput[], departureTime: Date, depot: Coord): boolean {
+function hasTimeConflict(assignedStops: PoolStopInput[], departureTime: Date, depot: Coord, travel: TravelModel): boolean {
   if (!assignedStops.some(s => s.arrivalTime)) return false;
-  const ordered = orderWithTimeBudget(depot, departureTime, assignedStops);
-  const timed = estimateStopTimes(depot, departureTime, ordered);
+  const ordered = orderWithTimeBudget(depot, departureTime, assignedStops, undefined, travel);
+  const timed = estimateStopTimes(depot, departureTime, ordered, undefined, undefined, travel);
   return timed.some(s => s.timeConflict);
 }
 
@@ -119,7 +119,8 @@ export function assignStopsToTrucks(
   stops: PoolStopInput[],
   departureTime: Date = new Date(),
   strategy: AssignmentStrategy = 'SWEEP_BALANCED',
-  depot: Coord = TOCHIGI_DEPOT
+  depot: Coord = TOCHIGI_DEPOT,
+  travel: TravelModel = DEFAULT_TRAVEL_MODEL
 ): StopPackingResult {
   const slots: Slot[] = [];
   trucks.forEach((truck, truckIndex) => {
@@ -156,7 +157,7 @@ export function assignStopsToTrucks(
 
     const nonConflicting = candidates.filter(
       ({ slot, si }) =>
-        !hasTimeConflict([...assignedStopsBySlot[si], stop], trucks[slot.truckIndex].departureTime ?? departureTime, depot)
+        !hasTimeConflict([...assignedStopsBySlot[si], stop], trucks[slot.truckIndex].departureTime ?? departureTime, depot, travel)
     );
     const pool = nonConflicting.length > 0 ? nonConflicting : candidates;
 

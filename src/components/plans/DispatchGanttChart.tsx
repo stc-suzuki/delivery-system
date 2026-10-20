@@ -10,12 +10,13 @@ import {
   ROUTE_OPERATION_STATUS_STYLES,
 } from '@/lib/routeOperationStatus';
 import {
-  haversine,
-  AVERAGE_SPEED_KMH,
   STOP_DURATION_MINUTES,
   TOCHIGI_DEPOT,
+  DEFAULT_TRAVEL_MODEL,
   estimateReturnToDepotTime,
+  travelTimeMs,
   type LunchBreak,
+  type TravelModel,
 } from '@/lib/routeOptimizer';
 
 const START_HOUR = 8;
@@ -82,6 +83,9 @@ type Props = {
   // 本社（車庫）の座標。バー終端（本社帰着予定）・本社立寄りマーカーの計算に使う。
   // 未指定時はSystemSetting未取得時のフォールバック値（TOCHIGI_DEPOT）を使う
   depotCenter?: { lat: number; lng: number };
+  // 移動時間の見積もり（システム設定の平均時速・回り道係数・1区間の固定時間）。本社帰着予定・
+  // 本社立寄りマーカーの計算に使う。未指定時はSystemSetting未取得時のフォールバック（直線距離÷時速30km）
+  travel?: TravelModel;
 };
 
 const DEFAULT_RELOAD_DURATION_MINUTES = 30;
@@ -144,7 +148,8 @@ function estimateChartExtentMinutes(
   lunchBreakStart: string,
   lunchBreakEnd: string,
   stopDurationMinutes: number,
-  depotCenter: { lat: number; lng: number }
+  depotCenter: { lat: number; lng: number },
+  travel: TravelModel
 ): number {
   let maxMinutes = 0;
   for (const route of routes) {
@@ -167,7 +172,7 @@ function estimateChartExtentMinutes(
       maxMinutes = Math.max(maxMinutes, latestStopMinutes);
       const lastStopTime = new Date(latestStop.scheduledTime as string);
       const lunchBreak = resolveLunchBreak(lastStopTime, lunchBreakStart, lunchBreakEnd);
-      const returnDate = estimateReturnToDepotTime(depotCenter, latestStop, lastStopTime, lunchBreak, stopDurationMinutes);
+      const returnDate = estimateReturnToDepotTime(depotCenter, latestStop, lastStopTime, lunchBreak, stopDurationMinutes, travel);
       maxMinutes = Math.max(maxMinutes, minutesFromStart(returnDate.toISOString(), referenceDate));
     }
   }
@@ -201,6 +206,7 @@ export default function DispatchGanttChart({
   lunchBreakStart = DEFAULT_LUNCH_BREAK_START,
   lunchBreakEnd = DEFAULT_LUNCH_BREAK_END,
   depotCenter = TOCHIGI_DEPOT,
+  travel = DEFAULT_TRAVEL_MODEL,
 }: Props) {
   const [expandedRouteIds, setExpandedRouteIds] = useState<Set<string>>(new Set());
   const { warnDialog } = useDialog();
@@ -216,7 +222,8 @@ export default function DispatchGanttChart({
     lunchBreakStart,
     lunchBreakEnd,
     stopDurationMinutes,
-    depotCenter
+    depotCenter,
+    travel
   );
   const dynamicEndHour = Math.max(END_HOUR, START_HOUR + Math.ceil(chartExtentMinutes / 60));
   const totalMinutes = (dynamicEndHour - START_HOUR) * 60;
@@ -291,7 +298,7 @@ export default function DispatchGanttChart({
           const reloadDepartDate = firstReloadStop
             ? new Date(
                 new Date(firstReloadStop.scheduledTime as string).getTime() -
-                  (haversine(firstReloadStop, depotCenter) / AVERAGE_SPEED_KMH) * 60 * 60 * 1000
+                  travelTimeMs(depotCenter, firstReloadStop, travel)
               )
             : undefined;
           const reloadArriveDate = reloadDepartDate
@@ -311,7 +318,8 @@ export default function DispatchGanttChart({
                 lastStop,
                 new Date(lastStop.scheduledTime as string),
                 routeLunchBreak,
-                stopDurationMinutes
+                stopDurationMinutes,
+                travel
               )
             : undefined;
           const estimatedEndMinutes = estimatedReturnDate ? minutesFromStart(estimatedReturnDate.toISOString(), routeReferenceDate) : undefined;
@@ -678,7 +686,8 @@ export default function DispatchGanttChart({
                         tripLastStop,
                         new Date(tripLastStop.scheduledTime as string),
                         tripLunchBreak,
-                        stopDurationMinutes
+                        stopDurationMinutes,
+                        travel
                       )
                     : undefined;
                   const tripEstimatedEndMinutes = tripEstimatedReturnDate

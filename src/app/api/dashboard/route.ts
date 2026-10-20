@@ -3,6 +3,7 @@ import { prisma } from '@/lib/prisma';
 import { startOfDay, endOfDay, subDays, format } from 'date-fns';
 import { computeRouteOperationStatus } from '@/lib/routeOperationStatus';
 import { estimateReturnEta } from '@/lib/returnEstimate';
+import { travelModelFromSettings } from '@/lib/routeOptimizer';
 
 export const dynamic = 'force-dynamic';
 
@@ -45,6 +46,7 @@ export async function GET(request: NextRequest) {
               lunchBreakStart: settings.lunchBreakStart,
               lunchBreakEnd: settings.lunchBreakEnd,
               stopDurationMinutes: settings.defaultStopDurationMinutes,
+              travel: travelModelFromSettings(settings),
             }
           )
         : null;

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { geocodeAddress } from '@/lib/geocode';
+import { reorderRoute } from '@/lib/routeReorder';
 
 export async function GET() {
   try {
@@ -31,6 +32,9 @@ export async function PATCH(req: NextRequest) {
       assumedTripsPerDay,
       reloadDurationMinutes,
       assignmentStrategy,
+      averageSpeedKmh,
+      roadDetourFactor,
+      perLegTravelMinutes,
       depotName,
       depotAddress,
     } = body;
@@ -64,6 +68,15 @@ export async function PATCH(req: NextRequest) {
     if (assignmentStrategy !== 'SWEEP' && assignmentStrategy !== 'SWEEP_BALANCED') {
       return NextResponse.json({ error: 'AI提案の割当方式の指定が不正です' }, { status: 400 });
     }
+    if (!Number.isInteger(averageSpeedKmh) || averageSpeedKmh < 5 || averageSpeedKmh > 100) {
+      return NextResponse.json({ error: '移動時間の平均時速は5〜100の整数で入力してください' }, { status: 400 });
+    }
+    if (typeof roadDetourFactor !== 'number' || !(roadDetourFactor >= 1 && roadDetourFactor <= 3)) {
+      return NextResponse.json({ error: '回り道係数は1.0〜3.0の数値で入力してください' }, { status: 400 });
+    }
+    if (!Number.isInteger(perLegTravelMinutes) || perLegTravelMinutes < 0 || perLegTravelMinutes > 60) {
+      return NextResponse.json({ error: '1区間ごとの固定時間は0〜60の整数で入力してください' }, { status: 400 });
+    }
     if (typeof depotName !== 'string' || depotName.trim() === '') {
       return NextResponse.json({ error: '本部名称を入力してください' }, { status: 400 });
     }
@@ -91,6 +104,9 @@ export async function PATCH(req: NextRequest) {
         assumedTripsPerDay,
         reloadDurationMinutes,
         assignmentStrategy,
+        averageSpeedKmh,
+        roadDetourFactor,
+        perLegTravelMinutes,
         depotName,
         depotAddress,
         ...(geo && { depotLat: geo.lat, depotLng: geo.lng }),
@@ -108,15 +124,41 @@ export async function PATCH(req: NextRequest) {
         assumedTripsPerDay,
         reloadDurationMinutes,
         assignmentStrategy,
+        averageSpeedKmh,
+        roadDetourFactor,
+        perLegTravelMinutes,
         depotName,
         depotAddress,
         ...(geo && { depotLat: geo.lat, depotLng: geo.lng }),
       },
     });
+    // 移動時間の見積もりを変えた場合、まだ出発していない今日以降のルートの到着予定（割当時に保存した値）を
+    // 新しい見積もりで計算し直す（しないとガントチャート・ドライバー画面に古い時刻が残る）
+    const travelChanged =
+      existing != null &&
+      (existing.averageSpeedKmh !== averageSpeedKmh ||
+        existing.roadDetourFactor !== roadDetourFactor ||
+        existing.perLegTravelMinutes !== perLegTravelMinutes);
+    if (travelChanged) {
+      await recomputePendingRoutesFromToday();
+    }
+
     return NextResponse.json(settings);
   } catch (error) {
     console.error(error);
     const message = error instanceof Error ? error.message : '設定の更新に失敗しました';
     return NextResponse.json({ error: message }, { status: 500 });
+  }
+}
+
+// 今日（日本時間）以降の、まだ出発していない（PENDING）・配送先が割当済みのルートの到着予定を計算し直す
+async function recomputePendingRoutesFromToday() {
+  const todayJst = new Date().toLocaleDateString('sv-SE', { timeZone: 'Asia/Tokyo' });
+  const routes = await prisma.planRoute.findMany({
+    where: { status: 'PENDING', routeDate: { gte: new Date(`${todayJst}T00:00:00.000Z`) }, stops: { some: {} } },
+    select: { id: true },
+  });
+  for (const r of routes) {
+    await prisma.$transaction(tx => reorderRoute(tx, r.id));
   }
 }

@@ -21,6 +21,7 @@ import DispatchGanttChart, { GanttRoute, splitPlateNo } from '@/components/plans
 import RelativeDayBadge from '@/components/plans/RelativeDayBadge';
 import { RouteStatus } from '@prisma/client';
 import { computeRouteOperationStatus, RouteOperationStatus } from '@/lib/routeOperationStatus';
+import { travelModelFromSettings, type TravelModel } from '@/lib/routeOptimizer';
 
 // ルート同士の見分けは行の分離・トラック番号表示で十分なため、識別色はローテーションさせず単一色に統一する
 // （赤は到着希望時刻ありの停車地マーカーの警告色として予約しているため使わない）
@@ -152,6 +153,7 @@ function PlansPageContent() {
   const [lunchBreakStart, setLunchBreakStart] = useState<string | undefined>(undefined);
   const [lunchBreakEnd, setLunchBreakEnd] = useState<string | undefined>(undefined);
   const [depotCenter, setDepotCenter] = useState<{ lat: number; lng: number } | undefined>(undefined);
+  const [travel, setTravel] = useState<TravelModel | undefined>(undefined);
 
   const [updatedAt, setUpdatedAt] = useState<Date | null>(null);
   const [refreshing, setRefreshing] = useState(false);
@@ -249,12 +251,16 @@ function PlansPageContent() {
           lunchBreakEnd: string;
           depotLat: number;
           depotLng: number;
+          averageSpeedKmh: number;
+          roadDetourFactor: number;
+          perLegTravelMinutes: number;
         }) => {
           setStopDurationMinutes(s.defaultStopDurationMinutes);
           setReloadDurationMinutes(s.reloadDurationMinutes);
           setLunchBreakStart(s.lunchBreakStart);
           setLunchBreakEnd(s.lunchBreakEnd);
           setDepotCenter({ lat: s.depotLat, lng: s.depotLng });
+          setTravel(travelModelFromSettings(s));
         }
       )
       .catch(() => {});
@@ -445,6 +451,7 @@ function PlansPageContent() {
             lunchBreakStart={lunchBreakStart}
             lunchBreakEnd={lunchBreakEnd}
             depotCenter={depotCenter}
+            travel={travel}
           />
         )}
       </div>

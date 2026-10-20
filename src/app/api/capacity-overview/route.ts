@@ -137,6 +137,9 @@ export async function GET() {
         reloadDurationMinutes: systemSetting.reloadDurationMinutes,
         depotLat: systemSetting.depotLat,
         depotLng: systemSetting.depotLng,
+        averageSpeedKmh: systemSetting.averageSpeedKmh,
+        roadDetourFactor: systemSetting.roadDetourFactor,
+        perLegTravelMinutes: systemSetting.perLegTravelMinutes,
       });
 
       return {

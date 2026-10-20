@@ -8,6 +8,8 @@ import {
   nearestNeighborOrder,
   orderWithTimeBudget,
   skipLunchBreak,
+  travelTimeMs,
+  type TravelModel,
 } from './routeOptimizer';
 
 // 経線（南北方向）に沿った距離はhaversineで誤差なく求まるため、本社の真北に地点を置いて
@@ -175,5 +177,36 @@ describe('orderWithTimeBudget（到着希望時刻を守りつつ順番を決め
     const anchor = { id: 'anchor', ...northKm(15), arrivalTime: jst('09:30').toISOString() };
     const other = { id: 'other', ...eastKm(5), arrivalTime: null };
     expect(orderWithTimeBudget(depot, jst('09:00'), [anchor, other]).map(s => s.id)).toEqual(['anchor', 'other']);
+  });
+});
+
+describe('travelTimeMs（移動時間の見積もり・補正つき）', () => {
+  // 1区間8分＋直線距離×1.2÷時速45km。真北15kmなら 8 + 15×1.2÷45×60 = 8 + 24 = 32分
+  const travel: TravelModel = { averageSpeedKmh: 45, detourFactor: 1.2, perLegMinutes: 8 };
+  const minutes = (ms: number) => Math.round(ms / 60000);
+
+  it('補正を指定しなければ、従来どおり直線距離÷時速30km', () => {
+    expect(minutes(travelTimeMs(depot, northKm(15)))).toBe(30);
+  });
+
+  it('1区間ごとの固定時間＋直線距離×回り道係数÷平均時速で見積もる', () => {
+    expect(minutes(travelTimeMs(depot, northKm(15), travel))).toBe(32);
+  });
+
+  it('同じ場所への移動は、固定時間も足さず0分', () => {
+    expect(travelTimeMs(northKm(15), northKm(15), travel)).toBe(0);
+  });
+
+  it('市街地の短い区間（直線1km）でも、固定時間の分だけ長く見積もる', () => {
+    // 補正なしは2分。補正ありは 8 + 1×1.2÷45×60 = 9.6分
+    expect(minutes(travelTimeMs(depot, northKm(1)))).toBe(2);
+    expect(minutes(travelTimeMs(depot, northKm(1), travel))).toBe(10);
+  });
+
+  it('到着予定時刻・本社帰着予定にも補正が効く', () => {
+    const timed = estimateStopTimes(depot, jst('09:00'), [{ ...northKm(15), arrivalTime: null }], undefined, 10, travel);
+    expectTime(timed[0].estimatedTime, jst('09:32'));
+    // 09:32着＋荷下ろし10分＝09:42発、本社まで32分で10:14着
+    expectTime(estimateReturnToDepotTime(depot, northKm(15), jst('09:32'), undefined, 10, travel), jst('10:14'));
   });
 });

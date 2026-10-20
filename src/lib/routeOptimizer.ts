@@ -44,9 +44,42 @@ export function nearestNeighborOrder<T extends Coord>(depot: Coord, stops: T[]):
 export const AVERAGE_SPEED_KMH = 30;
 export const STOP_DURATION_MINUTES = 10;
 
-function travelMs(a: Coord, b: Coord): number {
-  return (haversine(a, b) / AVERAGE_SPEED_KMH) * 60 * 60 * 1000;
+// 移動時間の見積もり方（システム設定で調整する）。道路を使った経路計算はしておらず、
+// 「1区間ごとの固定時間 ＋ 直線距離×回り道係数÷平均時速」で近似する。固定時間は信号・右左折・
+// 駐車などで、市街地の短い区間ほど直線距離だけでは短く見積もりすぎるのを補う（2026-10-20導入。
+// それまでは直線距離÷時速30kmのみ＝DEFAULT_TRAVEL_MODELと同じ）
+export interface TravelModel {
+  /** 平均時速（km/h） */
+  averageSpeedKmh: number;
+  /** 回り道係数（道路の距離÷直線距離の目安） */
+  detourFactor: number;
+  /** 1区間ごとに足す固定時間（分） */
+  perLegMinutes: number;
 }
+
+export const DEFAULT_TRAVEL_MODEL: TravelModel = { averageSpeedKmh: AVERAGE_SPEED_KMH, detourFactor: 1, perLegMinutes: 0 };
+
+export function travelModelFromSettings(settings: {
+  averageSpeedKmh: number;
+  roadDetourFactor: number;
+  perLegTravelMinutes: number;
+}): TravelModel {
+  return {
+    averageSpeedKmh: settings.averageSpeedKmh,
+    detourFactor: settings.roadDetourFactor,
+    perLegMinutes: settings.perLegTravelMinutes,
+  };
+}
+
+// 同じ場所（分割した停車地など、距離0）への移動は固定時間も足さず0とする
+export function travelTimeMs(a: Coord, b: Coord, travel: TravelModel = DEFAULT_TRAVEL_MODEL): number {
+  const km = haversine(a, b);
+  if (km === 0) return 0;
+  const minutes = travel.perLegMinutes + ((km * travel.detourFactor) / travel.averageSpeedKmh) * 60;
+  return minutes * 60 * 1000;
+}
+
+const travelMs = travelTimeMs;
 
 const DWELL_MS = STOP_DURATION_MINUTES * 60 * 1000;
 
@@ -84,7 +117,8 @@ export function orderWithTimeBudget<T extends Coord & { arrivalTime?: string | n
   depot: Coord,
   departureTime: Date,
   stops: T[],
-  lunchBreak?: LunchBreak
+  lunchBreak?: LunchBreak,
+  travel: TravelModel = DEFAULT_TRAVEL_MODEL
 ): T[] {
   const timed = stops
     .filter(s => s.arrivalTime)
@@ -107,9 +141,9 @@ export function orderWithTimeBudget<T extends Coord & { arrivalTime?: string | n
         .sort((a, b) => a.dist - b.dist);
 
       const feasible = sorted.find(({ stop }) => {
-        const arrivalAtStop = skipLunchBreak(addTimeOutsideLunch(new Date(currentTime), travelMs(currentPos, stop), lunchBreak), lunchBreak).getTime();
+        const arrivalAtStop = skipLunchBreak(addTimeOutsideLunch(new Date(currentTime), travelMs(currentPos, stop, travel), lunchBreak), lunchBreak).getTime();
         const departAfterStop = addTimeOutsideLunch(new Date(arrivalAtStop), DWELL_MS, lunchBreak);
-        const projectedAtAnchor = addTimeOutsideLunch(departAfterStop, travelMs(stop, anchor), lunchBreak).getTime();
+        const projectedAtAnchor = addTimeOutsideLunch(departAfterStop, travelMs(stop, anchor, travel), lunchBreak).getTime();
         return projectedAtAnchor <= deadline;
       });
 
@@ -117,7 +151,7 @@ export function orderWithTimeBudget<T extends Coord & { arrivalTime?: string | n
 
       order.push(feasible.stop);
       pool.splice(feasible.index, 1);
-      const arrivalAtFeasible = skipLunchBreak(addTimeOutsideLunch(new Date(currentTime), travelMs(currentPos, feasible.stop), lunchBreak), lunchBreak);
+      const arrivalAtFeasible = skipLunchBreak(addTimeOutsideLunch(new Date(currentTime), travelMs(currentPos, feasible.stop, travel), lunchBreak), lunchBreak);
       currentTime = addTimeOutsideLunch(arrivalAtFeasible, DWELL_MS, lunchBreak).getTime();
       currentPos = feasible.stop;
     }
@@ -144,7 +178,8 @@ export function estimateStopTimes<T extends Coord & { arrivalTime?: string | nul
   departureTime: Date,
   orderedStops: T[],
   lunchBreak?: LunchBreak,
-  stopDurationMinutes: number = STOP_DURATION_MINUTES
+  stopDurationMinutes: number = STOP_DURATION_MINUTES,
+  travel: TravelModel = DEFAULT_TRAVEL_MODEL
 ): StopTimeEstimate<T>[] {
   let currentTime = departureTime;
   let currentPos: Coord = depot;
@@ -152,7 +187,7 @@ export function estimateStopTimes<T extends Coord & { arrivalTime?: string | nul
   const result: StopTimeEstimate<T>[] = [];
 
   for (const stop of orderedStops) {
-    const earliestArrival = skipLunchBreak(addTimeOutsideLunch(currentTime, travelMs(currentPos, stop), lunchBreak), lunchBreak);
+    const earliestArrival = skipLunchBreak(addTimeOutsideLunch(currentTime, travelMs(currentPos, stop, travel), lunchBreak), lunchBreak);
 
     let actualTime = earliestArrival;
     let timeConflict = false;
@@ -182,10 +217,11 @@ export function estimateReturnToDepotTime(
   lastStop: Coord,
   lastStopArrivalTime: Date,
   lunchBreak?: LunchBreak,
-  stopDurationMinutes: number = STOP_DURATION_MINUTES
+  stopDurationMinutes: number = STOP_DURATION_MINUTES,
+  travel: TravelModel = DEFAULT_TRAVEL_MODEL
 ): Date {
   const departFromLastStop = addTimeOutsideLunch(lastStopArrivalTime, stopDurationMinutes * 60 * 1000, lunchBreak);
-  return skipLunchBreak(addTimeOutsideLunch(departFromLastStop, travelMs(lastStop, depot), lunchBreak), lunchBreak);
+  return skipLunchBreak(addTimeOutsideLunch(departFromLastStop, travelMs(lastStop, depot, travel), lunchBreak), lunchBreak);
 }
 
 export const TOCHIGI_DEPOT: Coord = { lat: 36.5657, lng: 139.8836 };
