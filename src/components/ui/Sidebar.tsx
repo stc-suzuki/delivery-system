@@ -218,7 +218,7 @@ export default function Sidebar() {
         </div>
 
         {canSeeDeliveryZone && (
-          <div className="space-y-0.5 rounded-lg bg-indigo-100 p-1.5">
+          <div className="space-y-0.5 rounded-lg bg-[#DAE2FF] p-1.5">
             {renderZoneLabel(Route, '配送管理メニュー', 'blueSoft')}
             {NAV_ZONE_2.map(item => renderZoneItem(item, 'blueSoft', true))}
           </div>
