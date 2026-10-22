@@ -4,7 +4,6 @@ import { useEffect, useRef, useState } from 'react';
 import dynamic from 'next/dynamic';
 import { Building2 } from 'lucide-react';
 import PageHeader from '@/components/ui/PageHeader';
-import type { RouteForMap } from '@/components/map/DeliveryMap';
 import { useDialog } from '@/components/ui/DialogProvider';
 
 const DeliveryMap = dynamic(() => import('@/components/map/DeliveryMap'), { ssr: false });
@@ -17,6 +16,7 @@ type Location = {
   phone: string | null;
   lat: number;
   lng: number;
+  positionManual: boolean;
   createdAt: string;
 };
 
@@ -39,7 +39,10 @@ export default function LocationsPage() {
   const [phone, setPhone] = useState('');
   const [preview, setPreview] = useState<{ lat: number; lng: number; formattedAddress: string } | null>(null);
   // 編集中の配送先の、いま登録されている位置。「住所確認」をすると確認結果（preview）の表示に切り替わる
-  const [savedPosition, setSavedPosition] = useState<{ lat: number; lng: number; formattedAddress: string | null } | null>(null);
+  const [savedPosition, setSavedPosition] = useState<{ lat: number; lng: number; formattedAddress: string | null; positionManual: boolean } | null>(null);
+  // 地図のピンのドラッグ・クリックで指定した位置。保存すると住所検索の位置の代わりにこの位置で登録する。
+  // 住所を書き換えたら取り消す（住所が変われば場所も変わるため、住所検索で決め直す）
+  const [manualPos, setManualPos] = useState<{ lat: number; lng: number } | null>(null);
   const formRef = useRef<HTMLDivElement>(null);
   const [error, setError] = useState('');
   const [saving, setSaving] = useState(false);
@@ -70,6 +73,7 @@ export default function LocationsPage() {
     setChecking(true);
     setError('');
     setPreview(null);
+    setManualPos(null);
     try {
       // ジオコーディングのみ確認するため一時的にPOSTせず、サーバーAPIを流用
       const res = await fetch('/api/locations/geocode-preview', {
@@ -97,7 +101,7 @@ export default function LocationsPage() {
       const res = await fetch(url, {
         method,
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name, address, phone }),
+        body: JSON.stringify({ name, address, phone, ...(manualPos && { lat: manualPos.lat, lng: manualPos.lng }) }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error);
@@ -116,7 +120,8 @@ export default function LocationsPage() {
     setAddress(loc.address);
     setPhone(loc.phone ?? '');
     setPreview(null);
-    setSavedPosition({ lat: loc.lat, lng: loc.lng, formattedAddress: loc.formattedAddress });
+    setSavedPosition({ lat: loc.lat, lng: loc.lng, formattedAddress: loc.formattedAddress, positionManual: loc.positionManual });
+    setManualPos(null);
     setError('');
     // 一覧の下の方で「編集」を押すと、フォームと地図が画面の外にあって気づけないため、フォームまで戻す
     formRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
@@ -129,6 +134,7 @@ export default function LocationsPage() {
     setPhone('');
     setPreview(null);
     setSavedPosition(null);
+    setManualPos(null);
   }
 
   async function handleBulkUpload() {
@@ -174,10 +180,7 @@ export default function LocationsPage() {
     }
   }
 
-  const mapPosition = preview ?? savedPosition;
-  const previewRoutes: RouteForMap[] = mapPosition
-    ? [{ id: 'preview', color: '#2563eb', stops: [{ lat: mapPosition.lat, lng: mapPosition.lng, order: 0, name }] }]
-    : [];
+  const mapPosition = manualPos ?? preview ?? savedPosition;
 
   return (
     <div className="space-y-6">
@@ -209,7 +212,10 @@ export default function LocationsPage() {
                 <input
                   required
                   value={address}
-                  onChange={e => setAddress(e.target.value)}
+                  onChange={e => {
+                    setAddress(e.target.value);
+                    setManualPos(null);
+                  }}
                   className="w-full rounded border border-gray-300 px-3 py-2 text-sm"
                 />
                 <button
@@ -230,12 +236,29 @@ export default function LocationsPage() {
                 className="mt-1 w-full rounded border border-gray-300 px-3 py-2 text-sm"
               />
             </div>
-            {preview ? (
+            {manualPos ? (
+              <div className="flex items-start justify-between gap-2 rounded bg-blue-50 px-2 py-1.5 text-xs text-blue-800">
+                <span>
+                  地図で指定した位置（北緯{manualPos.lat.toFixed(5)}・東経{manualPos.lng.toFixed(5)}）。「{editingId ? '更新' : '登録'}」を押すと、この位置で保存します。
+                </span>
+                {(preview || savedPosition) && (
+                  <button type="button" onClick={() => setManualPos(null)} className="shrink-0 text-blue-700 underline">
+                    {preview || !savedPosition?.positionManual ? '住所の位置に戻す' : '登録済みの位置に戻す'}
+                  </button>
+                )}
+              </div>
+            ) : preview ? (
               <p className="text-xs text-[#4B5563]">確認結果: {preview.formattedAddress}</p>
             ) : (
               savedPosition && (
                 <p className="text-xs text-[#4B5563]">
-                  地図は登録済みの位置です{savedPosition.formattedAddress ? `（${savedPosition.formattedAddress}）` : ''}。住所を変えた場合は「住所確認」で新しい位置を確かめてください。
+                  地図は登録済みの位置です
+                  {savedPosition.positionManual
+                    ? '（地図で指定した位置）'
+                    : savedPosition.formattedAddress
+                    ? `（${savedPosition.formattedAddress}）`
+                    : ''}
+                  。住所を変えた場合は「住所確認」で新しい位置を確かめてください。
                 </p>
               )
             )}
@@ -261,8 +284,13 @@ export default function LocationsPage() {
         </div>
 
         {/* 地図プレビュー */}
-        <div className="h-80 rounded-lg border border-panel-line bg-panel p-2 shadow-sm lg:h-auto">
-          <DeliveryMap routes={previewRoutes} />
+        <div className="flex h-80 flex-col rounded-lg border border-panel-line bg-panel p-2 shadow-sm lg:h-auto">
+          <div className="min-h-0 flex-1">
+            <DeliveryMap routes={[]} editablePin={mapPosition} onPinMove={setManualPos} />
+          </div>
+          <p className="mt-1 text-xs text-[#4B5563]">
+            位置がずれているときは、ピンをドラッグするか地図をクリックして直せます（番地まで特定できなかった住所や、住所検索で見つからない住所など）。
+          </p>
         </div>
       </div>
 
@@ -330,6 +358,7 @@ export default function LocationsPage() {
                 <td className="px-4 py-2">{loc.name}</td>
                 <td className="px-4 py-2">
                   {loc.address}
+                  {loc.positionManual && <p className="text-xs text-[#4B5563]">位置は地図で指定</p>}
                   {isApproximateMatch(loc) && (
                     <p className="text-xs text-amber-700">地図上の位置は「{loc.formattedAddress}」付近（番地まで特定できませんでした）</p>
                   )}

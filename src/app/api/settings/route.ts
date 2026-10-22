@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { geocodeAddress } from '@/lib/geocode';
-import { reorderRoute } from '@/lib/routeReorder';
+import { recomputePendingRoutesFromToday } from '@/lib/recomputeRoutes';
 
 export async function GET() {
   try {
@@ -148,17 +148,5 @@ export async function PATCH(req: NextRequest) {
     console.error(error);
     const message = error instanceof Error ? error.message : '設定の更新に失敗しました';
     return NextResponse.json({ error: message }, { status: 500 });
-  }
-}
-
-// 今日（日本時間）以降の、まだ出発していない（PENDING）・配送先が割当済みのルートの到着予定を計算し直す
-async function recomputePendingRoutesFromToday() {
-  const todayJst = new Date().toLocaleDateString('sv-SE', { timeZone: 'Asia/Tokyo' });
-  const routes = await prisma.planRoute.findMany({
-    where: { status: 'PENDING', routeDate: { gte: new Date(`${todayJst}T00:00:00.000Z`) }, stops: { some: {} } },
-    select: { id: true },
-  });
-  for (const r of routes) {
-    await prisma.$transaction(tx => reorderRoute(tx, r.id));
   }
 }

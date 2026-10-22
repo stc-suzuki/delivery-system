@@ -24,12 +24,23 @@ type Props = {
   onLocationClick?: (lngLat: { lat: number; lng: number }) => void;
   // 地図の初期表示中心（本社座標）。未指定時はSystemSetting未取得時のフォールバック値を使う
   depotCenter?: { lat: number; lng: number };
+  // 位置を手で直すためのピン（配送先管理）。onPinMoveを渡すと、ピンのドラッグ・地図のクリックで
+  // 新しい位置を知らせる
+  editablePin?: { lat: number; lng: number } | null;
+  onPinMove?: (latLng: { lat: number; lng: number }) => void;
 };
 
-export default function DeliveryMap({ routes, onLocationClick, depotCenter = TOCHIGI_DEPOT }: Props) {
+// 位置を合わせやすいよう、ピンを出すときはこの拡大率以上にする
+const PIN_ZOOM = 16;
+
+export default function DeliveryMap({ routes, onLocationClick, depotCenter = TOCHIGI_DEPOT, editablePin, onPinMove }: Props) {
   const containerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<L.Map | null>(null);
   const layersRef = useRef<L.Layer[]>([]);
+  const pinRef = useRef<L.Marker | null>(null);
+  // 地図の作成時に登録したイベントから、最新のコールバックを呼ぶため
+  const onPinMoveRef = useRef(onPinMove);
+  onPinMoveRef.current = onPinMove;
 
   useEffect(() => {
     if (!containerRef.current || mapRef.current) return;
@@ -42,20 +53,52 @@ export default function DeliveryMap({ routes, onLocationClick, depotCenter = TOC
       attribution: '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
     }).addTo(map);
 
-    if (onLocationClick) {
-      map.on('click', (e: L.LeafletMouseEvent) => {
-        onLocationClick({ lat: e.latlng.lat, lng: e.latlng.lng });
-      });
-    }
+    map.on('click', (e: L.LeafletMouseEvent) => {
+      onLocationClick?.({ lat: e.latlng.lat, lng: e.latlng.lng });
+      onPinMoveRef.current?.({ lat: e.latlng.lat, lng: e.latlng.lng });
+    });
 
     mapRef.current = map;
 
     return () => {
       map.remove();
       mapRef.current = null;
+      pinRef.current = null;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map) return;
+    if (!editablePin) {
+      if (pinRef.current) {
+        map.removeLayer(pinRef.current);
+        pinRef.current = null;
+      }
+      return;
+    }
+    const latLng = L.latLng(editablePin.lat, editablePin.lng);
+    if (!pinRef.current) {
+      const pin = L.marker(latLng, { draggable: true }).addTo(map);
+      pin.on('dragend', () => {
+        const p = pin.getLatLng();
+        onPinMoveRef.current?.({ lat: p.lat, lng: p.lng });
+      });
+      pinRef.current = pin;
+    } else {
+      pinRef.current.setLatLng(latLng);
+    }
+    if (pinRef.current.dragging) {
+      if (onPinMoveRef.current) pinRef.current.dragging.enable();
+      else pinRef.current.dragging.disable();
+    }
+    // 別の配送先を開いたときなど、ピンが見えていない・地図が引きすぎのときだけ寄せる
+    // （ドラッグ直後に地図が動かないように）
+    if (map.getZoom() < PIN_ZOOM - 2 || !map.getBounds().contains(latLng)) {
+      map.setView(latLng, Math.max(map.getZoom(), PIN_ZOOM));
+    }
+  }, [editablePin?.lat, editablePin?.lng]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     const map = mapRef.current;

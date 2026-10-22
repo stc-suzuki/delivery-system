@@ -87,6 +87,9 @@ model Location {
   phone            String?
   lat              Float
   lng              Float
+  // 位置（lat/lng）を配送先管理の地図で手で指定したか。falseは住所検索で決めた位置。
+  // 住所を書き換えて保存すると住所検索で決め直し、falseに戻る
+  positionManual   Boolean        @default(false)
   city             String         @default("栃木県")
   createdAt        DateTime       @default(now())
   updatedAt        DateTime       @updatedAt

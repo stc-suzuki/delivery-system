@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { geocodeAddress } from '@/lib/geocode';
 import { extractCity } from '@/lib/address';
+import { parseManualPosition } from '@/lib/locationPosition';
 
 export async function GET(req: NextRequest) {
   try {
@@ -27,12 +28,19 @@ export async function GET(req: NextRequest) {
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
-    const { name, address, phone } = body;
+    const { name, address, phone, lat, lng } = body;
     if (!name || !address) {
       return NextResponse.json({ error: '名称と住所は必須です' }, { status: 400 });
     }
+    const manual = parseManualPosition(lat, lng);
+    if (!manual.ok) {
+      return NextResponse.json({ error: manual.error }, { status: 400 });
+    }
 
-    const geo = await geocodeAddress(address);
+    // 地図で位置を指定した場合は住所検索をしない（住所検索で見つからない住所も登録できる）
+    const position = manual.position
+      ? { lat: manual.position.lat, lng: manual.position.lng, formattedAddress: null, positionManual: true }
+      : { ...(await geocodeAddress(address)), positionManual: false };
     const city = extractCity(address);
 
     const location = await prisma.location.create({
@@ -40,9 +48,10 @@ export async function POST(req: NextRequest) {
         name,
         address,
         phone: phone ?? null,
-        formattedAddress: geo.formattedAddress,
-        lat: geo.lat,
-        lng: geo.lng,
+        formattedAddress: position.formattedAddress,
+        lat: position.lat,
+        lng: position.lng,
+        positionManual: position.positionManual,
         ...(city && { city }),
       },
     });
