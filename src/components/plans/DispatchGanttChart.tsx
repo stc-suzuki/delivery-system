@@ -14,7 +14,6 @@ import {
   TOCHIGI_DEPOT,
   DEFAULT_TRAVEL_MODEL,
   estimateReturnToDepotTime,
-  travelTimeMs,
   type LunchBreak,
   type TravelModel,
 } from '@/lib/routeOptimizer';
@@ -73,22 +72,18 @@ type Props = {
   // 最後の配送先での荷下ろし時間（分）。バーの終端＝本社帰着予定の計算に使う。
   // 未指定時はデフォルト値（routeOptimizer.STOP_DURATION_MINUTES）を使う
   stopDurationMinutes?: number;
-  // 本社での積み込み所要時間（分）。本社経由マーカーのツールチップ（立寄り時間帯）の計算に使う。
-  // 未指定時はSystemSettingのデフォルト値（30分）を使う
-  reloadDurationMinutes?: number;
   // 昼休み開始・終了（HH:mm）。バー上の帯表示、および本社帰着予定の計算（昼休みにかかる場合は
   // 休憩明けまで繰り下げる）の両方に使う。未指定時はSystemSettingのデフォルト値（12:00〜13:00）を使う
   lunchBreakStart?: string;
   lunchBreakEnd?: string;
-  // 本社（車庫）の座標。バー終端（本社帰着予定）・本社立寄りマーカーの計算に使う。
+  // 本社（車庫）の座標。バー終端（本社帰着予定）の計算に使う。
   // 未指定時はSystemSetting未取得時のフォールバック値（TOCHIGI_DEPOT）を使う
   depotCenter?: { lat: number; lng: number };
-  // 移動時間の見積もり（システム設定の平均時速・回り道係数・1区間の固定時間）。本社帰着予定・
-  // 本社立寄りマーカーの計算に使う。未指定時はSystemSetting未取得時のフォールバック（直線距離÷時速30km）
+  // 移動時間の見積もり（システム設定の平均時速・回り道係数・1区間の固定時間）。本社帰着予定の
+  // 計算に使う。未指定時はSystemSetting未取得時のフォールバック（直線距離÷時速30km）
   travel?: TravelModel;
 };
 
-const DEFAULT_RELOAD_DURATION_MINUTES = 30;
 const DEFAULT_LUNCH_BREAK_START = '12:00';
 const DEFAULT_LUNCH_BREAK_END = '13:00';
 
@@ -202,7 +197,6 @@ export default function DispatchGanttChart({
   routes,
   onRouteClick,
   stopDurationMinutes = STOP_DURATION_MINUTES,
-  reloadDurationMinutes = DEFAULT_RELOAD_DURATION_MINUTES,
   lunchBreakStart = DEFAULT_LUNCH_BREAK_START,
   lunchBreakEnd = DEFAULT_LUNCH_BREAK_END,
   depotCenter = TOCHIGI_DEPOT,
@@ -290,22 +284,6 @@ export default function DispatchGanttChart({
             ? minutesFromStart(route.departureTime, routeReferenceDate)
             : validStopTimes[0]?.minutes;
           const lastStop = validStopTimes[validStopTimes.length - 1];
-          // 本社経由マーカー: 稼働開始後に追加された配送先のうち最も早い到着予定のもの（＝本社で
-          // 積み込んだ後に最初に向かった先）から逆算し、本社を出発した時刻・到着した時刻を推定する
-          const firstReloadStop = validStopTimes
-            .filter(s => s.addedAfterDeparture)
-            .sort((a, b) => a.minutes - b.minutes)[0];
-          const reloadDepartDate = firstReloadStop
-            ? new Date(
-                new Date(firstReloadStop.scheduledTime as string).getTime() -
-                  travelTimeMs(depotCenter, firstReloadStop, travel)
-              )
-            : undefined;
-          const reloadArriveDate = reloadDepartDate
-            ? new Date(reloadDepartDate.getTime() - reloadDurationMinutes * 60 * 1000)
-            : undefined;
-          const reloadArriveMinutes = reloadArriveDate ? minutesFromStart(reloadArriveDate.toISOString(), routeReferenceDate) : undefined;
-          const reloadDepartMinutes = reloadDepartDate ? minutesFromStart(reloadDepartDate.toISOString(), routeReferenceDate) : undefined;
           // バーの終端＝最後の配送先の荷下ろし完了後、本社へ戻り終える予定時刻。
           // 荷下ろし後・本社への移動のいずれかが昼休みにかかる場合は休憩明けまで繰り下げる
           // （従来はこの帰還レッグにだけ昼休みが考慮されておらず、かかっていても遅延なしとして計算されていた）
@@ -566,49 +544,6 @@ export default function DispatchGanttChart({
                         className={`pointer-events-none absolute -top-8 hidden whitespace-nowrap rounded bg-gray-800 px-2 py-1 text-xs text-white group-hover:block ${horizontalPositionClass}`}
                       >
                         {isActual ? '本社帰着' : '本社帰着予定'} {returnTime}
-                      </div>
-                    </div>
-                  );
-                })()}
-
-                {/* 本社経由マーカー: 稼働開始後に配送先が追加されたルートで、本社に立ち寄って
-                    積み込んだと推定される時間帯（到着〜出発の中間点）に配送先マーカーと同様の
-                    見た目で表示する。実際に本社へ立ち寄った実績を記録しているわけではなく、
-                    最初に追加された配送先の到着予定時刻からの逆算による推定値である点に注意 */}
-                {!hasMultipleTrips && reloadArriveMinutes !== undefined && reloadDepartMinutes !== undefined && (() => {
-                  const midMinutes = (reloadArriveMinutes + reloadDepartMinutes) / 2;
-                  const midPct = pct(midMinutes);
-                  const edgeAnchor = midPct > 85 ? 'right' : midPct < 8 ? 'left' : 'center';
-                  const horizontalPositionClass =
-                    edgeAnchor === 'right' ? 'right-0' : edgeAnchor === 'left' ? 'left-0' : 'left-1/2 -translate-x-1/2';
-                  return (
-                    <div
-                      className="group absolute top-1/2 h-3 w-3 -translate-x-1/2 -translate-y-1/2 cursor-default rounded-full border-2 border-white bg-amber-500"
-                      style={{ left: `${midPct}%` }}
-                    >
-                      <svg
-                        viewBox="0 0 24 24"
-                        fill="none"
-                        stroke="#ffffff"
-                        strokeWidth="3"
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        className="h-full w-full p-0.5"
-                      >
-                        <path d="M3 11l9-7 9 7" />
-                        <path d="M5 10v9a1 1 0 0 0 1 1h3v-6h6v6h3a1 1 0 0 0 1-1v-9" />
-                      </svg>
-
-                      <div
-                        className={`pointer-events-none absolute top-3 whitespace-nowrap text-[10px] font-semibold leading-none text-amber-700 ${horizontalPositionClass}`}
-                      >
-                        本社
-                      </div>
-
-                      <div
-                        className={`pointer-events-none absolute -top-8 hidden whitespace-nowrap rounded bg-gray-800 px-2 py-1 text-xs text-white group-hover:block ${horizontalPositionClass}`}
-                      >
-                        本社立寄り（積み込み・推定） {format(reloadArriveDate as Date, 'HH:mm')}〜{format(reloadDepartDate as Date, 'HH:mm')}
                       </div>
                     </div>
                   );

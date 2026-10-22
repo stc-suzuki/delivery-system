@@ -149,7 +149,6 @@ function PlansPageContent() {
   const [monthDays, setMonthDays] = useState<Record<string, DayStatus>>({});
   const calendarRef = useRef<HTMLDivElement>(null);
   const [stopDurationMinutes, setStopDurationMinutes] = useState<number | undefined>(undefined);
-  const [reloadDurationMinutes, setReloadDurationMinutes] = useState<number | undefined>(undefined);
   const [lunchBreakStart, setLunchBreakStart] = useState<string | undefined>(undefined);
   const [lunchBreakEnd, setLunchBreakEnd] = useState<string | undefined>(undefined);
   const [depotCenter, setDepotCenter] = useState<{ lat: number; lng: number } | undefined>(undefined);
@@ -246,7 +245,6 @@ function PlansPageContent() {
       .then(
         (s: {
           defaultStopDurationMinutes: number;
-          reloadDurationMinutes: number;
           lunchBreakStart: string;
           lunchBreakEnd: string;
           depotLat: number;
@@ -256,7 +254,6 @@ function PlansPageContent() {
           perLegTravelMinutes: number;
         }) => {
           setStopDurationMinutes(s.defaultStopDurationMinutes);
-          setReloadDurationMinutes(s.reloadDurationMinutes);
           setLunchBreakStart(s.lunchBreakStart);
           setLunchBreakEnd(s.lunchBreakEnd);
           setDepotCenter({ lat: s.depotLat, lng: s.depotLng });
@@ -447,7 +444,6 @@ function PlansPageContent() {
             routes={sortedRoutes}
             onRouteClick={canEditRoutes ? route => router.push(`/plans/${route.id}`) : undefined}
             stopDurationMinutes={stopDurationMinutes}
-            reloadDurationMinutes={reloadDurationMinutes}
             lunchBreakStart={lunchBreakStart}
             lunchBreakEnd={lunchBreakEnd}
             depotCenter={depotCenter}
