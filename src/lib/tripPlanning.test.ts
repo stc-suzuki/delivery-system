@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { Coord } from './routeOptimizer';
-import { planTrips } from './tripPlanning';
+import { planTrips, tripsWithStops } from './tripPlanning';
 
 const KM_PER_DEGREE = (6371 * Math.PI) / 180;
 const depot: Coord = { lat: 36.5657, lng: 139.8836 };
@@ -42,5 +42,22 @@ describe('planTrips（複数便の時刻計算）', () => {
     const result = planTrips(depot, jst('09:00'), [[], [northKm(15)]], 30);
     expectTime(result.trips[0].returnedAt, jst('09:00'));
     expectTime(result.trips[1].departureTime, jst('09:30'));
+  });
+});
+
+describe('tripsWithStops（配送先のある便だけ）', () => {
+  const trips = [{ id: 'a' }, { id: 'b' }, { id: 'c' }];
+
+  it('配送先のない便を除き、元の順を保つ', () => {
+    expect(tripsWithStops(trips, [{ tripId: 'c' }, { tripId: 'a' }, { tripId: 'a' }]).map(t => t.id)).toEqual(['a', 'c']);
+  });
+
+  it('最後の便が空なら、その前の便が最後になる（帰社の印を出す便）', () => {
+    const visible = tripsWithStops(trips, [{ tripId: 'a' }, { tripId: 'b' }]);
+    expect(visible[visible.length - 1].id).toBe('b');
+  });
+
+  it('便のない配送先（tripIdなし）は数えない', () => {
+    expect(tripsWithStops(trips, [{ tripId: null }, {}])).toEqual([]);
   });
 });

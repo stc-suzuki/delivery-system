@@ -10,6 +10,7 @@ import {
   ROUTE_OPERATION_STATUS_LABELS,
   ROUTE_OPERATION_STATUS_STYLES,
 } from '@/lib/routeOperationStatus';
+import { tripsWithStops } from '@/lib/tripPlanning';
 
 type Stop = {
   id: string;
@@ -101,11 +102,11 @@ export default function DriverRoutePage() {
     routeRef.current = route;
   }, [route]);
 
-  // 今対応中（未完了）の便のIDを返す（ルートは常に便を1件以上持つ）
+  // 今対応中（未完了）の便のIDを返す（ルートは常に便を1件以上持つ）。配送先のない空の便は対象外
   function currentTripId(): string | null {
     const r = routeRef.current;
     if (!r) return null;
-    const active = r.trips.find(t => t.status !== 'COMPLETED');
+    const active = tripsWithStops(r.trips, r.stops).find(t => t.status !== 'COMPLETED');
     return active ? active.id : null;
   }
 
@@ -381,6 +382,8 @@ export default function DriverRoutePage() {
   }
 
   const completedCount = route.stops.filter(s => s.status !== 'PENDING').length;
+  // 配送先のない空の便は表示しない（開始ボタンも出さない）
+  const visibleTrips = tripsWithStops(route.trips, route.stops);
 
   // 停車地1件分のカード。actionableがfalseの場合（＝便を使うルートで、その便がまだ進行中でない場合）は
   // 完了・スキップ・取消ボタンを無効化し、順番を飛ばして先の便を操作させない
@@ -565,12 +568,12 @@ export default function DriverRoutePage() {
           )}
         </div>
 
-        {route.trips.length <= 1
+        {visibleTrips.length <= 1
           ? route.stops.map((stop, i) => renderStopCard(stop, i, true))
-          : route.trips.map((trip, tripPos) => {
+          : visibleTrips.map((trip, tripPos) => {
               const tripStops = route.stops.filter(s => s.tripId === trip.id);
-              const priorTrip = route.trips[tripPos - 1];
-              const isLastTrip = tripPos === route.trips.length - 1;
+              const priorTrip = visibleTrips[tripPos - 1];
+              const isLastTrip = tripPos === visibleTrips.length - 1;
               const allTripStopsResolved =
                 tripStops.length > 0 && tripStops.every(s => s.status !== 'PENDING');
               // ルート自体が未運送開始の間は、1便目もまだ「運送開始」待ちのため専用ボタンは出さない

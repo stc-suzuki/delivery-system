@@ -9,6 +9,7 @@ import {
   ROUTE_OPERATION_STATUS_LABELS,
   ROUTE_OPERATION_STATUS_STYLES,
 } from '@/lib/routeOperationStatus';
+import { tripsWithStops } from '@/lib/tripPlanning';
 import {
   STOP_DURATION_MINUTES,
   TOCHIGI_DEPOT,
@@ -103,7 +104,7 @@ function minutesFromStart(time: string, referenceDate: Date): number {
 // 便の出発時刻、それも無ければ最初に時刻が判明している停車地の予定時刻で代用する
 function resolveRouteReferenceDate(route: GanttRoute): Date {
   if (route.departureTime) return new Date(route.departureTime);
-  const firstTripDeparture = route.trips?.find(t => t.departureTime)?.departureTime;
+  const firstTripDeparture = tripsWithStops(route.trips ?? [], route.stops).find(t => t.departureTime)?.departureTime;
   if (firstTripDeparture) return new Date(firstTripDeparture);
   const firstStop = route.stops.find(s => s.scheduledTime);
   return firstStop ? new Date(firstStop.scheduledTime as string) : new Date();
@@ -147,7 +148,7 @@ function estimateChartExtentMinutes(
   for (const route of routes) {
     const referenceDate = resolveRouteReferenceDate(route);
     if (route.departureTime) maxMinutes = Math.max(maxMinutes, minutesFromStart(route.departureTime, referenceDate));
-    for (const trip of route.trips ?? []) {
+    for (const trip of tripsWithStops(route.trips ?? [], route.stops)) {
       if (trip.departureTime) maxMinutes = Math.max(maxMinutes, minutesFromStart(trip.departureTime, referenceDate));
     }
     let latestStop: GanttStop | undefined;
@@ -341,13 +342,15 @@ export default function DispatchGanttChart({
             : undefined;
           const hasPackageData = route.stops.some(s => s.packages !== undefined);
           const isExpanded = expandedRouteIds.has(route.id);
+          // 配送先のない空の便は描かない（最後の便が空だと帰社の印が出なくなるため）
+          const drawTrips = tripsWithStops(route.trips ?? [], route.stops);
           // 複数便対応フェーズ4：便が2件以上ある場合だけ、下のバー・マーカー描画を便ごとに分ける
           // （1件以下は複数便扱いする意味がないため、既存の単一ルート描画のまま）
-          const hasMultipleTrips = (route.trips?.length ?? 0) > 1;
+          const hasMultipleTrips = drawTrips.length > 1;
           // 「本社経由あり」バッジ：便の間に本社へ戻って積み込む行。計画の段階で便を分けた場合も、
           // 出発後の追加で便が増えた場合も同じ扱い（出発後の追加でも、まだ1件も配達していなければ
-          // 便は増えず本社にも戻らないため、追加の有無では判定しない）。配送先のない空の便は数えない
-          const tripCount = (route.trips ?? []).filter(t => route.stops.some(s => s.tripId === t.id)).length;
+          // 便は増えず本社にも戻らないため、追加の有無では判定しない）
+          const tripCount = drawTrips.length;
 
           return (
             <Fragment key={route.id}>
@@ -602,8 +605,8 @@ export default function DispatchGanttChart({
                 {/* 複数便対応フェーズ4：便が2件以上ある場合、上のバー・各種マーカーは便ごとに繰り返す。
                     見た目は既存の単一ルート用マーカー（出発・帰社/帰社予定・本社経由・停車地）と同じものを
                     便の数だけ描画する。最後の便だけ終端に「帰社/帰社予定」マーカー、それ以外は「本社経由」マーカー */}
-                {hasMultipleTrips && route.trips!.map((trip, tripIdx) => {
-                  const isLastTrip = tripIdx === route.trips!.length - 1;
+                {hasMultipleTrips && drawTrips.map((trip, tripIdx) => {
+                  const isLastTrip = tripIdx === drawTrips.length - 1;
                   const tripStopTimes = route.stops
                     .filter(s => s.tripId === trip.id && s.scheduledTime)
                     .map(s => ({ ...s, minutes: minutesFromStart(s.scheduledTime as string, routeReferenceDate) }))

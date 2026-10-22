@@ -70,3 +70,10 @@ export function planTrips<T extends Coord & { arrivalTime?: string | null }>(
 
   return { trips };
 }
+
+// 配送先が1件以上ある便だけを、元の順のまま返す。配送先のない空の便（「便を追加」した直後や、
+// 配送先を未割当に戻した後に残る便）は、ドライバー画面に出さず・開始させず、ガントチャートにも描かない。
+// 空の便を描くと、最後の便が空のときに帰社の印が出なくなる不具合があった
+export function tripsWithStops<T extends { id: string }>(trips: T[], stops: { tripId?: string | null }[]): T[] {
+  return trips.filter(t => stops.some(s => s.tripId === t.id));
+}

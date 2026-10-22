@@ -3,6 +3,7 @@ import { Prisma } from '@prisma/client';
 import { prisma } from '@/lib/prisma';
 import { rescheduleFollowingTrips } from '@/lib/routeReorder';
 import { checkDriverAccess } from '@/lib/driverAccess';
+import { tripsWithStops } from '@/lib/tripPlanning';
 
 export async function PATCH(
   req: NextRequest,
@@ -12,7 +13,7 @@ export async function PATCH(
     const { status, markReturned, actor, completeTripId, startTripId } = await req.json();
     const existing = await prisma.planRoute.findUnique({
       where: { id: params.routeId },
-      include: { trips: { orderBy: { tripIndex: 'asc' } } },
+      include: { trips: { orderBy: { tripIndex: 'asc' } }, stops: { select: { tripId: true } } },
     });
     if (!existing) {
       return NextResponse.json({ error: '対象のルートが見つかりません（削除された可能性があります）' }, { status: 404 });
@@ -21,6 +22,8 @@ export async function PATCH(
     if (denied) return denied;
     // 本部（リアルタイム追跡画面）による代理操作の記録は、ログイン済みの場合だけ認める
     const isDispatcher = actor === 'DISPATCHER' && loggedIn;
+    // 配送先のない空の便は、開始の対象にも「前の便」の判定にも含めない
+    const tripsWithStopsList = tripsWithStops(existing.trips, existing.stops);
 
     // 複数便対応フェーズ3：便の完了（本社へ）・開始
     if (completeTripId) {
@@ -56,7 +59,10 @@ export async function PATCH(
       if (trip.status !== 'PENDING') {
         return NextResponse.json({ error: 'この便は既に開始されています' }, { status: 400 });
       }
-      const priorTrip = existing.trips.find(t => t.tripIndex === trip.tripIndex - 1);
+      if (!tripsWithStopsList.some(t => t.id === trip.id)) {
+        return NextResponse.json({ error: 'この便には配送先がありません' }, { status: 400 });
+      }
+      const priorTrip = [...tripsWithStopsList].reverse().find(t => t.tripIndex < trip.tripIndex);
       if (priorTrip && priorTrip.status !== 'COMPLETED') {
         return NextResponse.json({ error: '前の便が完了していません' }, { status: 400 });
       }
@@ -89,9 +95,9 @@ export async function PATCH(
             ...(markReturned === false && { returnedAt: null, returnedByDispatcher: false }),
           },
         });
-        // 運送開始と同時に、便があれば1便目（tripIndex: 0）も進行中にする（2便目以降はPENDINGのまま）
+        // 運送開始と同時に、配送先のある最初の便も進行中にする（それ以降の便はPENDINGのまま）
         if (status === 'IN_PROGRESS') {
-          const firstTrip = existing.trips.find(t => t.tripIndex === 0);
+          const firstTrip = tripsWithStopsList[0];
           if (firstTrip && firstTrip.status === 'PENDING') {
             await tx.routeTrip.update({
               where: { id: firstTrip.id },
@@ -108,8 +114,9 @@ export async function PATCH(
         // ただし対象は実際に完了している便（status: COMPLETED）に限る。停車地0件の空便（未割当に
         // 戻す等で残ったもの）は自動解決の対象外でstatusがPENDINGのまま残るため、ここで無条件に
         // returnedAtだけ書き込むと「PENDINGなのに帰社実績あり」という矛盾データになってしまう
-        if (existing.trips.length > 0) {
-          const lastTrip = existing.trips[existing.trips.length - 1];
+        // 最後の便は、配送先のある最後の便とする（末尾に空の便があっても、その前の便に記録する）
+        if (tripsWithStopsList.length > 0) {
+          const lastTrip = tripsWithStopsList[tripsWithStopsList.length - 1];
           if (lastTrip.status === 'COMPLETED') {
             if (markReturned === true && lastTrip.returnedAt === null) {
               await tx.routeTrip.update({ where: { id: lastTrip.id }, data: { returnedAt } });
