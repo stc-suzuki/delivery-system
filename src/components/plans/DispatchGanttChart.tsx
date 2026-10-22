@@ -36,9 +36,6 @@ export type GanttStop = {
   status?: 'PENDING' | 'COMPLETED' | 'SKIPPED';
   isTimeFixed?: boolean;
   packages?: GanttPackage[];
-  // 稼働開始後に「配送先の割当」で追加された停車地か。trueが1件でもあれば、
-  // このルートは本社に一旦戻って積み込んでから再出発する前提で到着予定時刻を計算している
-  addedAfterDeparture?: boolean;
   // このルートの中でどの便（RouteTrip）の荷物か。null/未設定＝便を使わない今まで通りの単一ルート扱い
   tripId?: string | null;
 };
@@ -344,10 +341,13 @@ export default function DispatchGanttChart({
             : undefined;
           const hasPackageData = route.stops.some(s => s.packages !== undefined);
           const isExpanded = expandedRouteIds.has(route.id);
-          const hasReloadTrip = route.stops.some(s => s.addedAfterDeparture);
           // 複数便対応フェーズ4：便が2件以上ある場合だけ、下のバー・マーカー描画を便ごとに分ける
           // （1件以下は複数便扱いする意味がないため、既存の単一ルート描画のまま）
           const hasMultipleTrips = (route.trips?.length ?? 0) > 1;
+          // 「本社経由あり」バッジ：便の間に本社へ戻って積み込む行。計画の段階で便を分けた場合も、
+          // 出発後の追加で便が増えた場合も同じ扱い（出発後の追加でも、まだ1件も配達していなければ
+          // 便は増えず本社にも戻らないため、追加の有無では判定しない）。配送先のない空の便は数えない
+          const tripCount = (route.trips ?? []).filter(t => route.stops.some(s => s.tripId === t.id)).length;
 
           return (
             <Fragment key={route.id}>
@@ -380,10 +380,10 @@ export default function DispatchGanttChart({
                     <span className="whitespace-nowrap text-xs font-semibold text-[#4B5563]">
                       {completedCount}/{route.stops.length}件
                     </span>
-                    {hasReloadTrip && (
+                    {tripCount >= 2 && (
                       <span
                         className="shrink-0 rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-700"
-                        title="稼働開始後に配送先が追加され、一旦本社に戻って積み込んでから再出発する前提で到着予定時刻を計算しています"
+                        title={`1日${tripCount}便。便の間に本社へ戻って積み込みます`}
                       >
                         本社経由あり
                       </span>

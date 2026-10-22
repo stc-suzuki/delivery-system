@@ -39,7 +39,6 @@ type RouteStop = {
   requestedArrivalTime: string | null;
   status: 'PENDING' | 'COMPLETED' | 'SKIPPED';
   isTimeFixed: boolean;
-  addedAfterDeparture: boolean;
   // このルートの中でどの便（RouteTrip）の荷物か。null＝便を使わない今まで通りの単一ルート扱い
   tripId: string | null;
   location: { name: string; lat: number; lng: number };
@@ -280,7 +279,6 @@ function PlansPageContent() {
       requestedArrivalTime: s.requestedArrivalTime,
       status: s.status,
       isTimeFixed: s.isTimeFixed,
-      addedAfterDeparture: s.addedAfterDeparture,
       tripId: s.tripId,
       packages: s.packages,
     })),
