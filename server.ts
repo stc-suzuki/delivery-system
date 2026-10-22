@@ -1,5 +1,4 @@
 import { createServer, type IncomingMessage } from 'http';
-import { parse } from 'url';
 import next from 'next';
 import { getToken } from 'next-auth/jwt';
 import { Server } from 'socket.io';
@@ -41,9 +40,10 @@ const app = next({ dev, hostname, port });
 const handle = app.getRequestHandler();
 
 app.prepare().then(() => {
+  // URLの分解はNext側に任せる（以前はNode.jsの古いurl.parse()で分けて渡しており、起動のたびに
+  // 非推奨の警告（DEP0169）が出ていた）
   const httpServer = createServer((req, res) => {
-    const parsedUrl = parse(req.url!, true);
-    handle(req, res, parsedUrl);
+    handle(req, res);
   });
 
   const io = new Server(httpServer, {
