@@ -4,6 +4,7 @@ import { format, addDays } from 'date-fns';
 import { checkCapacityOverflow } from '@/lib/loadCapacity';
 import { computeDayTimeOverflow, DayRouteInput } from '@/lib/dayTimeOverflow';
 import { PoolStopInput } from '@/lib/loadAssignment';
+import { fetchCurrentPositions } from '@/lib/currentPosition';
 
 // 引数を取らないGETは、本番の組み立て（next build）時に結果が固定されてしまうため、毎回DBから取得させる
 export const dynamic = 'force-dynamic';
@@ -46,14 +47,24 @@ export async function GET() {
       prisma.planRoute.findMany({
         where: { routeDate: { gte: rangeStart, lte: rangeEnd } },
         select: {
+          id: true,
           routeDate: true,
           truckId: true,
           driverId: true,
           departureTime: true,
+          status: true,
           truck: { select: { plateNo: true, capacityM3: true, bedWidth: true, bedDepth: true, bedHeight: true } },
         },
       }),
     ]);
+
+    // 当日の出発済みトラックは、今いる場所から見込む（dayTimeOverflow.ts）
+    const currentPositions = await fetchCurrentPositions(
+      prisma,
+      routes.filter(r => r.status !== 'PENDING').map(r => r.id),
+      { lat: systemSetting.depotLat, lng: systemSetting.depotLng }
+    );
+    const now = new Date();
 
     const volumeByDate = new Map<string, number>();
     const unassignedLocationIdsByDate = new Map<string, Set<string>>();
@@ -75,6 +86,8 @@ export async function GET() {
         bedHeight: r.truck.bedHeight,
         departureTime: r.departureTime,
         assignedStops: [],
+        status: r.status,
+        currentPos: currentPositions.get(r.id),
       });
     }
 
@@ -140,6 +153,7 @@ export async function GET() {
         averageSpeedKmh: systemSetting.averageSpeedKmh,
         roadDetourFactor: systemSetting.roadDetourFactor,
         perLegTravelMinutes: systemSetting.perLegTravelMinutes,
+        now,
       });
 
       return {

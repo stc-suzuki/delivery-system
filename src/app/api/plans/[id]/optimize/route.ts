@@ -4,6 +4,7 @@ import { canEditRoute, getEditHorizonDays } from '@/lib/planEditPolicy';
 import { orderWithTimeBudget, estimateStopTimes, skipLunchBreak, addTimeOutsideLunch, travelTimeMs, travelModelFromSettings } from '@/lib/routeOptimizer';
 import { validatePackagesInput, MAX_STOPS_PER_ROUTE, PackageInput } from '@/lib/planValidation';
 import { checkCapacityOverflow, effectiveCapacityM3, fitsBed, truckBed } from '@/lib/loadCapacity';
+import { fetchCurrentPositions } from '@/lib/currentPosition';
 
 const toHHMM = (d: Date) => `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
 
@@ -161,25 +162,8 @@ export async function POST(
     // GPS・配達完了地点より優先して車庫を現在地とする。以前はこの実績を一切見ておらず、帰社済みでも
     // 直近の配達完了地点（お客様先）が現在地とみなされ、そこから車庫までの移動時間を余計に加算して
     // しまうバグがあった。ルートは常に便を1件以上持つ不変条件のため、常に最後の便のreturnedAtを見る
-    const lastExistingTrip = route.trips[route.trips.length - 1];
-    const alreadyAtDepot = lastExistingTrip.returnedAt !== null;
-    const lastLog = await prisma.trackingLog.findFirst({
-      where: { routeId: route.id },
-      orderBy: { timestamp: 'desc' },
-    });
-    const lastCompletedStop = fixedStops
-      .filter(s => s.status === 'COMPLETED' && s.arrivedAt)
-      .reduce<(typeof fixedStops)[number] | undefined>(
-        (latest, s) => (!latest || s.arrivedAt!.getTime() > latest.arrivedAt!.getTime() ? s : latest),
-        undefined
-      );
-    const currentPos = alreadyAtDepot
-      ? depot
-      : lastLog
-      ? { lat: lastLog.lat, lng: lastLog.lng }
-      : lastCompletedStop
-      ? { lat: lastCompletedStop.location.lat, lng: lastCompletedStop.location.lng }
-      : depot;
+    // 決め方は荷物受付の当日の見込みと共通（currentPosition.ts）
+    const currentPos = (await fetchCurrentPositions(prisma, [route.id], depot)).get(route.id)!;
 
     const routeDateBase = new Date(route.routeDate);
     const [lunchStartHour, lunchStartMinute] = settings.lunchBreakStart.split(':').map(Number);

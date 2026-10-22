@@ -5,6 +5,7 @@ import { prisma } from '@/lib/prisma';
 import { validatePackagesInput, PackageInput } from '@/lib/planValidation';
 import { computeDayTimeOverflow, DayRouteInput } from '@/lib/dayTimeOverflow';
 import { PoolStopInput } from '@/lib/loadAssignment';
+import { fetchCurrentPositions } from '@/lib/currentPosition';
 
 // 配送先・荷物のプール登録（日付スコープ、配送ルートに非依存）。
 // 未割当（routeId未設定）の停車地に加え、既に手動割当済み（routeId設定済み）の停車地も
@@ -49,14 +50,23 @@ export async function GET(req: NextRequest) {
     prisma.planRoute.findMany({
       where: { routeDate: stopDate },
       select: {
+        id: true,
         truckId: true,
         driverId: true,
         departureTime: true,
+        status: true,
         truck: { select: { plateNo: true, capacityM3: true, bedWidth: true, bedDepth: true, bedHeight: true } },
       },
     }),
     prisma.systemSetting.upsert({ where: { id: 'default' }, update: {}, create: { id: 'default' } }),
   ]);
+
+  // 当日の出発済みトラックは、今いる場所から見込む（dayTimeOverflow.ts）
+  const currentPositions = await fetchCurrentPositions(
+    prisma,
+    routesForDate.filter(r => r.status !== 'PENDING').map(r => r.id),
+    { lat: systemSetting.depotLat, lng: systemSetting.depotLng }
+  );
 
   const unassignedStops = stops.filter(s => s.routeId === null);
   const assignedStops = stops.filter(s => s.routeId !== null);
@@ -92,6 +102,8 @@ export async function GET(req: NextRequest) {
       bedHeight: r.truck.bedHeight,
       departureTime: r.departureTime,
       assignedStops: [],
+      status: r.status,
+      currentPos: currentPositions.get(r.id),
     });
   }
   for (const s of assignedStops) {
@@ -131,6 +143,7 @@ export async function GET(req: NextRequest) {
     averageSpeedKmh: systemSetting.averageSpeedKmh,
     roadDetourFactor: systemSetting.roadDetourFactor,
     perLegTravelMinutes: systemSetting.perLegTravelMinutes,
+    now: new Date(),
   });
   const finishTimes = timeOverflowResult.truckResults.map(r => r.finishTime).filter((t): t is Date => t != null);
   const timeOverflow = {

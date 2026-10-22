@@ -5,17 +5,23 @@
 // 複数便対応：1台＝1回の積み込みで1日分を配りきる前提ではなく、容積上限に達するたびに本社を
 // 経由して積み直す（＝複数便に分かれる）ことを見込んでシミュレーションする（simulateFinish参照）。
 
-import { orderWithTimeBudget, estimateStopTimes, estimateReturnToDepotTime, addTimeOutsideLunch, TOCHIGI_DEPOT, LunchBreak, STOP_DURATION_MINUTES, Coord, TravelModel, DEFAULT_TRAVEL_MODEL } from './routeOptimizer';
+import { orderWithTimeBudget, estimateStopTimes, estimateReturnToDepotTime, addTimeOutsideLunch, skipLunchBreak, travelTimeMs, TOCHIGI_DEPOT, LunchBreak, STOP_DURATION_MINUTES, Coord, TravelModel, DEFAULT_TRAVEL_MODEL } from './routeOptimizer';
 import { AssignTruckInput, PoolStopInput } from './loadAssignment';
 import { fitsBed } from './loadCapacity';
 
 // AssignTruckInputの便情報（trips）はloadAssignment.ts側（既存の便の範囲内でしか振り分けない）
 // のための情報で、この時間シミュレーション（動的に何便でも見込む）には不要なため除外する
 export interface TruckDayInput extends Omit<AssignTruckInput, 'trips'> {
-  /** その日・そのトラックの出発時刻（route.departureTimeまたはデフォルト出発時間から解決済みのもの） */
+  /** その日・そのトラックの出発時刻（route.departureTimeまたはデフォルト出発時間から解決済みのもの）。
+   * 当日の出発済みトラックは「今」の時刻（dayTimeOverflow.ts参照） */
   departureTime: Date;
   /** 既に手動割当済み・完了していない停車地（このトラックのルートに実際に紐づいているもの） */
   assignedStops: PoolStopInput[];
+  /** 計算を始める場所。省略時は本社。当日の出発済みトラックは今いる場所 */
+  startPos?: Coord;
+  /** 未割当の配送先をこのトラックに積む場合、先に本社へ戻って積み込む（出発済みのトラック）。
+   * 今積んでいる配送先（assignedStops）だけなら本社に戻らず、そのまま配る */
+  reloadBeforePool?: boolean;
 }
 
 export interface TruckTimeResult {
@@ -56,6 +62,9 @@ interface FinishSimulation {
 // 時刻を返す。容積は「1日の上限」ではなく「1便あたりの上限（＝リロードが必要になる閾値）」として
 // 扱う点が単一便時代との違い。並び順自体は1日分をまとめて決めるため、大きい荷物を後回しにして
 // 便の区切りを遅らせる、といった賢い最適化はしない（既存のFFDと同じく厳密な最適解の保証はない）
+// 当日の出発済みトラックは、今いる場所（startPos）・今の時刻（departureTime）から始める。
+// reloadFirstのときは、稼働中ルートへの配送先追加（optimize/route.ts）と同じく、先に本社へ戻って
+// 積み込んでから、今積んでいる分と追加分をまとめて配る
 function simulateFinish(
   departureTime: Date,
   stops: PoolStopInput[],
@@ -64,19 +73,29 @@ function simulateFinish(
   depot: Coord,
   capacityM3: number | null,
   reloadDurationMinutes: number,
-  travel: TravelModel
+  travel: TravelModel,
+  startPos: Coord = depot,
+  reloadFirst = false
 ): FinishSimulation {
-  const ordered = orderWithTimeBudget(depot, departureTime, stops, lunchBreak, travel);
+  let tripStartPos = startPos;
+  let tripStartTime = departureTime;
+  if (reloadFirst) {
+    const arrivalAtDepot = skipLunchBreak(addTimeOutsideLunch(departureTime, travelTimeMs(startPos, depot, travel), lunchBreak), lunchBreak);
+    tripStartTime = addTimeOutsideLunch(arrivalAtDepot, reloadDurationMinutes * 60 * 1000, lunchBreak);
+    tripStartPos = depot;
+  }
+  const ordered = orderWithTimeBudget(tripStartPos, tripStartTime, stops, lunchBreak, travel);
 
   const arrivalConflictStopIds: string[] = [];
-  let tripStartTime = departureTime;
   let tripVolume = 0;
   let batch: PoolStopInput[] = [];
-  let finishTime = departureTime;
+  let finishTime = tripStartTime;
 
   const closeTrip = () => {
     if (batch.length === 0) return;
-    const timed = estimateStopTimes(depot, tripStartTime, batch, lunchBreak, stopDurationMinutes, travel);
+    const timed = estimateStopTimes(tripStartPos, tripStartTime, batch, lunchBreak, stopDurationMinutes, travel);
+    // 2便目以降は本社から出る
+    tripStartPos = depot;
     arrivalConflictStopIds.push(...timed.filter(s => s.timeConflict).map(s => s.id));
     const last = timed[timed.length - 1];
     finishTime = estimateReturnToDepotTime(depot, last, last.estimatedTime, lunchBreak, stopDurationMinutes, travel);
@@ -130,6 +149,22 @@ export function checkTimeOverflow(
   );
   const stopsByTruck = new Map<string, PoolStopInput[]>(trucks.map(t => [t.truckId, [...t.assignedStops]]));
 
+  // stopsは割当済み（assignedStops）の後ろに未割当分を足したもの。未割当分が含まれていれば、
+  // 出発済みのトラックは本社へ戻って積み込んでから配る
+  const simulateTruck = (t: TruckDayInput, stops: PoolStopInput[]) =>
+    simulateFinish(
+      t.departureTime,
+      stops,
+      lunchBreak,
+      stopDurationMinutes,
+      depot,
+      effectiveCapacity.get(t.truckId) ?? null,
+      reloadDurationMinutes,
+      travel,
+      t.startPos ?? depot,
+      !!t.reloadBeforePool && stops.length > t.assignedStops.length
+    );
+
   const sortedStops = [...poolStops].sort((a, b) => stopVolume(b) - stopVolume(a));
 
   for (const stop of sortedStops) {
@@ -140,16 +175,7 @@ export function checkTimeOverflow(
 
     const scored = candidates.map(t => ({
       truck: t,
-      sim: simulateFinish(
-        t.departureTime,
-        [...stopsByTruck.get(t.truckId)!, stop],
-        lunchBreak,
-        stopDurationMinutes,
-        depot,
-        effectiveCapacity.get(t.truckId) ?? null,
-        reloadDurationMinutes,
-        travel
-      ),
+      sim: simulateTruck(t, [...stopsByTruck.get(t.truckId)!, stop]),
     }));
     // 到着希望時刻に矛盾しない候補を優先し、その中で「この荷物を積んだ場合に最も早く終わる
     // （＝最も手が空いている）トラック」を選ぶ。体積の大きい順に処理しながら常に手が空いている
@@ -167,16 +193,7 @@ export function checkTimeOverflow(
     if (allStops.length === 0) {
       return { truckId: t.truckId, finishTime: null, overDeadline: false, arrivalConflictStopIds: [] };
     }
-    const sim = simulateFinish(
-      t.departureTime,
-      allStops,
-      lunchBreak,
-      stopDurationMinutes,
-      depot,
-      effectiveCapacity.get(t.truckId) ?? null,
-      reloadDurationMinutes,
-      travel
-    );
+    const sim = simulateTruck(t, allStops);
     return {
       truckId: t.truckId,
       finishTime: sim.finishTime,

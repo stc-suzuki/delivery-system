@@ -3,7 +3,7 @@
 import { checkTimeOverflow, TruckDayInput, TimeOverflowResult } from './timeOverflow';
 import { truckBed } from './loadCapacity';
 import { PoolStopInput } from './loadAssignment';
-import { LunchBreak, travelModelFromSettings } from './routeOptimizer';
+import { Coord, LunchBreak, travelModelFromSettings } from './routeOptimizer';
 import { resolveDeparture } from './routeReorder';
 
 export interface DayRouteInput {
@@ -16,6 +16,10 @@ export interface DayRouteInput {
   bedHeight: number | null;
   departureTime: Date | null;
   assignedStops: PoolStopInput[];
+  /** ルートの運行状況（PENDING/IN_PROGRESS/COMPLETED）。当日の計算の出発点を決めるのに使う */
+  status?: string;
+  /** 出発済みのルートの今いる場所（currentPosition.ts）。当日だけ使う */
+  currentPos?: Coord;
 }
 
 export interface DaySettings {
@@ -34,6 +38,12 @@ export interface DaySettings {
   averageSpeedKmh: number;
   roadDetourFactor: number;
   perLegTravelMinutes: number;
+  /** 今の時刻。routeDateが今日（日本時間）のときだけ、出発済みのトラックを今の時刻・今いる場所から計算する */
+  now?: Date;
+}
+
+function jstDateKey(d: Date): string {
+  return new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Tokyo' }).format(d);
 }
 
 function resolveTimeOnDate(date: Date, hhmm: string): Date {
@@ -54,15 +64,28 @@ export function computeDayTimeOverflow(
     lunchEnd.getTime() > lunchStart.getTime() ? { start: lunchStart, end: lunchEnd } : undefined;
   const deliveryEndTime = resolveTimeOnDate(settings.routeDate, settings.deliveryEndTime);
 
-  const trucks: TruckDayInput[] = routes.map(r => ({
-    truckId: r.truckId,
-    driverId: r.driverId,
-    label: r.plateNo,
-    capacityM3: r.capacityM3,
-    bed: truckBed({ bedWidth: r.bedWidth, bedDepth: r.bedDepth, bedHeight: r.bedHeight }),
-    departureTime: resolveDeparture(settings.routeDate, r.departureTime, settings.defaultDepartureTime),
-    assignedStops: r.assignedStops,
-  }));
+  // routeDateは@db.Date（UTCの0時）で保存されるため、UTCの日付部分がそのまま配送日になる
+  const now = settings.now;
+  const isToday = !!now && settings.routeDate.toISOString().slice(0, 10) === jstDateKey(now);
+
+  const trucks: TruckDayInput[] = routes.map(r => {
+    const base = {
+      truckId: r.truckId,
+      driverId: r.driverId,
+      label: r.plateNo,
+      capacityM3: r.capacityM3,
+      bed: truckBed({ bedWidth: r.bedWidth, bedDepth: r.bedDepth, bedHeight: r.bedHeight }),
+      assignedStops: r.assignedStops,
+    };
+    const departureTime = resolveDeparture(settings.routeDate, r.departureTime, settings.defaultDepartureTime);
+    if (!isToday || !now || !r.status) return { ...base, departureTime };
+    // 当日：稼働前のトラックは「出発時刻」と「今」の遅い方に本社を出る。出発済み（稼働中・配達完了・
+    // 帰社済み）のトラックは今いる場所から今の時刻で計算し、未割当の配送先を積むなら本社へ戻って積み込む
+    if (r.status === 'PENDING') {
+      return { ...base, departureTime: departureTime.getTime() > now.getTime() ? departureTime : now };
+    }
+    return { ...base, departureTime: now, startPos: r.currentPos, reloadBeforePool: true };
+  });
 
   return checkTimeOverflow(
     trucks,

@@ -130,6 +130,25 @@ describe('checkTimeOverflow（荷物受付の定時超過判定）', () => {
       expect(result.truckResults[0].arrivalConflictStopIds).toEqual(['early']);
     });
 
+    it('出発済みのトラックは、今いる場所から今積んでいる配送先へ直接向かう（本社に戻らない）', () => {
+      // 14:00に本社の真北15kmにいて、同じ場所の14:05指定の配送先を積んでいる
+      const here = { ...stopAt('here', 0, 15), arrivalTime: jst('14:05').toISOString() };
+      const t1 = truck('t1', null, { departureTime: jst('14:00'), startPos: { lat: here.lat, lng: here.lng }, reloadBeforePool: true, assignedStops: [here] });
+      const result = checkTimeOverflow([t1], [], jst('17:00'), 100, 30, undefined, 10, depot);
+      expect(result.arrivalConflictStopIds).toEqual([]);
+    });
+
+    it('出発済みのトラックに未割当の配送先を積むときは、本社へ戻って積み込んでから配る', () => {
+      // 14:00に真北15km → 本社14:30着 → 積み込み30分で15:00発 → 真北15kmに15:30着（15:00指定には間に合わない）
+      const pos = stopAt('pos', 0, 15);
+      const added = { ...stopAt('added', 0, 15), arrivalTime: jst('15:00').toISOString() };
+      const t1 = truck('t1', null, { departureTime: jst('14:00'), startPos: { lat: pos.lat, lng: pos.lng }, reloadBeforePool: true });
+      const result = checkTimeOverflow([t1], [added], jst('17:00'), 100, 30, undefined, 10, depot);
+      expect(result.arrivalConflictStopIds).toEqual(['added']);
+      // 15:30着・荷下ろし10分・本社まで30分 → 16:10帰着
+      expectTime(result.truckResults[0].finishTime, jst('16:10'));
+    });
+
     it('割当済みの配送先の時間指定も判定に含める', () => {
       const t1 = truck('t1', null, { assignedStops: [north] });
       const result = checkTimeOverflow([t1], [east], jst('17:00'), 100, 30, undefined, 10, depot);
