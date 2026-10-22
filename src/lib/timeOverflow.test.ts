@@ -46,12 +46,13 @@ describe('checkTimeOverflow（荷物受付の定時超過判定）', () => {
     expect(checkTimeOverflow([], radialStops, jst('17:00'), 100, 30, undefined, 10, depot)).toEqual({
       overCapacityTime: false,
       truckResults: [],
+      arrivalConflictStopIds: [],
     });
   });
 
   it('配送先がないトラックは本社帰着予定なし・超過なし', () => {
     const result = checkTimeOverflow([truck('t1')], [], jst('17:00'), 100, 30, undefined, 10, depot);
-    expect(result.truckResults).toEqual([{ truckId: 't1', finishTime: null, overDeadline: false }]);
+    expect(result.truckResults).toEqual([{ truckId: 't1', finishTime: null, overDeadline: false, arrivalConflictStopIds: [] }]);
   });
 
   it('1台では定時に間に合わない量でも、2台に分ければ間に合うと判定する', () => {
@@ -105,5 +106,34 @@ describe('checkTimeOverflow（荷物受付の定時超過判定）', () => {
       depot
     );
     expect(result.truckResults[0].finishTime).toBeNull();
+  });
+
+  describe('時間指定に間に合わない配送先（arrivalConflictStopIds）', () => {
+    // 本社の真北・真東15km（時速30kmで30分）に、どちらも10:00指定の配送先を置く
+    const north = { ...stopAt('north', 0, 15), arrivalTime: jst('10:00').toISOString() };
+    const east = { ...stopAt('east', 90, 15), arrivalTime: jst('10:00').toISOString() };
+
+    it('同じ時刻の指定が2件でトラックが1台なら、片方は間に合わないと判定する', () => {
+      const result = checkTimeOverflow([truck('t1')], [north, east], jst('17:00'), 100, 30, undefined, 10, depot);
+      expect(result.arrivalConflictStopIds).toHaveLength(1);
+    });
+
+    it('トラックが2台あれば別々のトラックに振り分けて、どちらも間に合うと判定する', () => {
+      const result = checkTimeOverflow([truck('t1'), truck('t2')], [north, east], jst('17:00'), 100, 30, undefined, 10, depot);
+      expect(result.arrivalConflictStopIds).toEqual([]);
+    });
+
+    it('出発してすぐの時刻で、移動が間に合わない指定も判定する', () => {
+      const tooEarly = { ...stopAt('early', 0, 15), arrivalTime: jst('09:10').toISOString() };
+      const result = checkTimeOverflow([truck('t1')], [tooEarly], jst('17:00'), 100, 30, undefined, 10, depot);
+      expect(result.arrivalConflictStopIds).toEqual(['early']);
+      expect(result.truckResults[0].arrivalConflictStopIds).toEqual(['early']);
+    });
+
+    it('割当済みの配送先の時間指定も判定に含める', () => {
+      const t1 = truck('t1', null, { assignedStops: [north] });
+      const result = checkTimeOverflow([t1], [east], jst('17:00'), 100, 30, undefined, 10, depot);
+      expect(result.arrivalConflictStopIds).toHaveLength(1);
+    });
   });
 });

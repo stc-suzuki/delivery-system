@@ -58,7 +58,12 @@ type TimeOverflowSummary = {
   overCapacityTime: boolean;
   deliveryEndTime: string;
   latestFinishTime: string | null;
+  arrivalConflicts: { stopId: string; locationName: string; requestedArrivalTime: string }[];
 };
+
+function arrivalConflictLabel(c: TimeOverflowSummary['arrivalConflicts'][number]): string {
+  return `${c.locationName}（${format(new Date(c.requestedArrivalTime), 'HH:mm')}指定）`;
+}
 
 function sumPackagesVolume(pkgs: { width: number; depth: number; height: number }[]): number {
   return pkgs.reduce((sum, p) => sum + p.width * p.depth * p.height, 0);
@@ -486,10 +491,16 @@ function PoolPageContent() {
           `定時（${capacityResult.timeOverflow.deliveryEndTime}）までに本社へ戻れない可能性があります（最も遅いトラックの本社帰着予定 ${finishLabel}）`
         );
       }
+      const arrivalConflicts = capacityResult?.timeOverflow.arrivalConflicts ?? [];
+      if (arrivalConflicts.length > 0) {
+        overflowWarnings.push(
+          `時間指定に間に合わない見込みの配送先があります（時間指定が重なっているか、移動が間に合いません）：${arrivalConflicts.map(arrivalConflictLabel).join('、')}`
+        );
+      }
       if (overflowWarnings.length > 0) {
         await warnDialog(overflowWarnings, {
           title: 'この日の登録内容について、以下の点にご注意ください',
-          footer: 'トラックを追加するか、他の日への振り分けをご検討ください。',
+          footer: 'トラックを追加するか、他の日への振り分け・時間指定の見直しをご検討ください。',
         });
       }
     } catch (err) {
@@ -705,6 +716,11 @@ function PoolPageContent() {
                   <span className="ml-2 text-[#4B5563]">
                     本社帰着予定 {format(new Date(timeOverflow.latestFinishTime), 'HH:mm')}
                   </span>
+                )}
+                {timeOverflow.arrivalConflicts.length > 0 && (
+                  <div className="mt-1 font-semibold text-red-700">
+                    ⚠ 時間指定に間に合わない見込み：{timeOverflow.arrivalConflicts.map(arrivalConflictLabel).join('、')}
+                  </div>
                 )}
               </div>
             )}

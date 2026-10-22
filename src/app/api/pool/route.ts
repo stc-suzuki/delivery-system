@@ -137,6 +137,12 @@ export async function GET(req: NextRequest) {
     overCapacityTime: timeOverflowResult.overCapacityTime,
     deliveryEndTime: systemSetting.deliveryEndTime,
     latestFinishTime: finishTimes.length > 0 ? new Date(Math.max(...finishTimes.map(t => t.getTime()))).toISOString() : null,
+    // 時間指定に間に合わない見込みの配送先（同じ時間帯の指定が重なってトラックが足りない場合など）。
+    // 割当済みは今のトラック、未割当は上の仮の振り分けで判定した結果
+    arrivalConflicts: timeOverflowResult.arrivalConflictStopIds.flatMap(id => {
+      const s = stops.find(st => st.id === id);
+      return s?.requestedArrivalTime ? [{ stopId: s.id, locationName: s.location.name, requestedArrivalTime: s.requestedArrivalTime.toISOString() }] : [];
+    }),
   };
 
   return NextResponse.json({ unassignedStops, assignedStops, truckCapacity, timeOverflow });

@@ -24,12 +24,16 @@ export interface TruckTimeResult {
   finishTime: Date | null;
   /** 定時（deliveryEndTime）を過ぎているか */
   overDeadline: boolean;
+  /** 到着希望時刻（時間指定）に間に合わない停車地のID */
+  arrivalConflictStopIds: string[];
 }
 
 export interface TimeOverflowResult {
   /** 1台でも定時を過ぎていればtrue */
   overCapacityTime: boolean;
   truckResults: TruckTimeResult[];
+  /** 全トラック分の、時間指定に間に合わない停車地のID（時間指定が重なってトラックが足りない場合など） */
+  arrivalConflictStopIds: string[];
 }
 
 function stopVolume(stop: PoolStopInput): number {
@@ -43,6 +47,7 @@ function stopFitsBed(stop: PoolStopInput, bed: NonNullable<AssignTruckInput['bed
 interface FinishSimulation {
   finishTime: Date;
   hasArrivalConflict: boolean;
+  arrivalConflictStopIds: string[];
 }
 
 // 停車地の並びを到着希望時刻込みで（1日分まとめて1回だけ）組み直したうえで、その並び順のまま
@@ -63,7 +68,7 @@ function simulateFinish(
 ): FinishSimulation {
   const ordered = orderWithTimeBudget(depot, departureTime, stops, lunchBreak, travel);
 
-  let hasArrivalConflict = false;
+  const arrivalConflictStopIds: string[] = [];
   let tripStartTime = departureTime;
   let tripVolume = 0;
   let batch: PoolStopInput[] = [];
@@ -72,7 +77,7 @@ function simulateFinish(
   const closeTrip = () => {
     if (batch.length === 0) return;
     const timed = estimateStopTimes(depot, tripStartTime, batch, lunchBreak, stopDurationMinutes, travel);
-    hasArrivalConflict = hasArrivalConflict || timed.some(s => s.timeConflict);
+    arrivalConflictStopIds.push(...timed.filter(s => s.timeConflict).map(s => s.id));
     const last = timed[timed.length - 1];
     finishTime = estimateReturnToDepotTime(depot, last, last.estimatedTime, lunchBreak, stopDurationMinutes, travel);
     batch = [];
@@ -93,7 +98,7 @@ function simulateFinish(
   }
   closeTrip();
 
-  return { finishTime, hasArrivalConflict };
+  return { finishTime, hasArrivalConflict: arrivalConflictStopIds.length > 0, arrivalConflictStopIds };
 }
 
 export function checkTimeOverflow(
@@ -108,7 +113,7 @@ export function checkTimeOverflow(
   travel: TravelModel = DEFAULT_TRAVEL_MODEL
 ): TimeOverflowResult {
   if (trucks.length === 0) {
-    return { overCapacityTime: false, truckResults: [] };
+    return { overCapacityTime: false, truckResults: [], arrivalConflictStopIds: [] };
   }
 
   // 未割当（プール）分をどのトラックに積むかは、体積の大きい順（FFD）に、
@@ -160,7 +165,7 @@ export function checkTimeOverflow(
   const truckResults: TruckTimeResult[] = trucks.map(t => {
     const allStops = stopsByTruck.get(t.truckId)!;
     if (allStops.length === 0) {
-      return { truckId: t.truckId, finishTime: null, overDeadline: false };
+      return { truckId: t.truckId, finishTime: null, overDeadline: false, arrivalConflictStopIds: [] };
     }
     const sim = simulateFinish(
       t.departureTime,
@@ -172,8 +177,17 @@ export function checkTimeOverflow(
       reloadDurationMinutes,
       travel
     );
-    return { truckId: t.truckId, finishTime: sim.finishTime, overDeadline: sim.finishTime.getTime() > deliveryEndTime.getTime() };
+    return {
+      truckId: t.truckId,
+      finishTime: sim.finishTime,
+      overDeadline: sim.finishTime.getTime() > deliveryEndTime.getTime(),
+      arrivalConflictStopIds: sim.arrivalConflictStopIds,
+    };
   });
 
-  return { overCapacityTime: truckResults.some(r => r.overDeadline), truckResults };
+  return {
+    overCapacityTime: truckResults.some(r => r.overDeadline),
+    truckResults,
+    arrivalConflictStopIds: truckResults.flatMap(r => r.arrivalConflictStopIds),
+  };
 }
