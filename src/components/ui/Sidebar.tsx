@@ -110,7 +110,8 @@ export default function Sidebar() {
           if (cancelled || !data?.days) return;
           setCapacityWarningCount(data.days.filter(d => dayStatusKind(d) === 'warning').length);
           setCapacityOverCount(data.days.filter(d => dayStatusKind(d) === 'over').length);
-          setCapacityTimeOverCount(data.days.filter(d => d.overTime).length);
+          // 時間超過・時間指定に間に合わない見込みのどちらかがある日（時間の問題がある日）
+          setCapacityTimeOverCount(data.days.filter(d => d.overTime || (d.arrivalConflicts?.length ?? 0) > 0).length);
         })
         .catch(() => {});
     }
@@ -148,7 +149,7 @@ export default function Sidebar() {
           <span className="flex shrink-0 items-center gap-1">
             {capacityOverCount + capacityTimeOverCount > 0 && (
               <span
-                title={`容積超過+時間超過: ${capacityOverCount + capacityTimeOverCount}日`}
+                title={`容積超過+時間超過・時間指定: ${capacityOverCount + capacityTimeOverCount}日`}
                 className="rounded-full bg-red-600 px-2 py-0.5 text-xs font-semibold text-white"
               >
                 {capacityOverCount + capacityTimeOverCount}

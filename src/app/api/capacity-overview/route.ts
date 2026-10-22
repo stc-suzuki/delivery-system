@@ -65,6 +65,7 @@ export async function GET() {
       { lat: systemSetting.depotLat, lng: systemSetting.depotLng }
     );
     const now = new Date();
+    const stopById = new Map(stops.map(s => [s.id, s]));
 
     const volumeByDate = new Map<string, number>();
     const unassignedLocationIdsByDate = new Map<string, Set<string>>();
@@ -156,6 +157,14 @@ export async function GET() {
         now,
       });
 
+      // 時間指定に間に合わない見込みの配送先（/api/poolのtimeOverflow.arrivalConflictsと同じ）
+      const arrivalConflicts = timeResult.arrivalConflictStopIds.flatMap(id => {
+        const s = stopById.get(id);
+        return s?.requestedArrivalTime
+          ? [{ locationName: s.location.name, requestedArrivalTime: s.requestedArrivalTime.toISOString() }]
+          : [];
+      });
+
       return {
         date,
         volumeM3,
@@ -166,6 +175,7 @@ export async function GET() {
         effectiveM3,
         overCapacity: overflow.overCapacity,
         overTime: timeResult.overCapacityTime,
+        arrivalConflicts,
       };
     });
 

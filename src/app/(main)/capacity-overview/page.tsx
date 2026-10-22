@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
+import { format } from 'date-fns';
 import { ClipboardCheck } from 'lucide-react';
 import PageHeader from '@/components/ui/PageHeader';
 import RelativeDayBadge from '@/components/plans/RelativeDayBadge';
@@ -47,12 +48,12 @@ export default function CapacityOverviewPage() {
       <PageHeader
         icon={ClipboardCheck}
         title="荷物受付状況の確認"
-        description="「荷物受付」で登録されたデータのうち、容量オーバー・時間オーバー・未割当がないかをまとめてチェックできます。"
+        description="「荷物受付」で登録されたデータのうち、容量オーバー・時間オーバー・時間指定の重なり・未割当がないかをまとめてチェックできます。"
         tint="blueSoft"
       />
       <p className="text-xs text-gray-500">
         ※ 容積の判定にはシステム設定の積載利用率（{loadUtilizationPercent}%）・1日あたりの想定往復回数（{assumedTripsPerDay}往復）を反映した実効容量を、時間の判定には運送終了時間（定時
-        {deliveryEndTime}）を使用しています。
+        {deliveryEndTime}）を使用しています。「時間指定」は、到着希望時刻に間に合わない見込みの配送先です（荷物受付の画面と同じ判定）。
       </p>
 
       {error && <p className="rounded bg-red-50 p-2 text-sm text-red-600">{error}</p>}
@@ -61,7 +62,7 @@ export default function CapacityOverviewPage() {
         <p className="text-gray-500">読み込み中...</p>
       ) : (
         <div className="overflow-x-auto rounded-lg border border-panel-line bg-panel shadow-sm">
-          <table className="w-full min-w-[720px] text-sm">
+          <table className="w-full min-w-[880px] text-sm">
             <thead className="bg-gray-50 text-left text-xs font-semibold text-gray-500">
               <tr>
                 <th className="px-3 py-2">日付</th>
@@ -69,6 +70,7 @@ export default function CapacityOverviewPage() {
                 <th className="px-3 py-2">登録済み体積 / 実効容量</th>
                 <th className="px-3 py-2">使用率</th>
                 <th className="px-3 py-2">時間</th>
+                <th className="px-3 py-2">時間指定</th>
                 <th className="px-3 py-2">未割当</th>
                 <th className="px-3 py-2" />
               </tr>
@@ -127,6 +129,27 @@ export default function CapacityOverviewPage() {
                         <span className="text-[#4B5563]">—</span>
                       ) : day.overTime ? (
                         <span className="rounded-full bg-red-600 px-2 py-0.5 text-xs font-semibold text-white">⚠ 時間超過</span>
+                      ) : (
+                        <span className="text-xs text-[#4B5563]">OK</span>
+                      )}
+                    </td>
+                    <td className="px-3 py-2">
+                      {day.truckCount === 0 ? (
+                        <span className="text-[#4B5563]">—</span>
+                      ) : (day.arrivalConflicts?.length ?? 0) > 0 ? (
+                        <div className="space-y-0.5">
+                          <span
+                            title="到着希望時刻に間に合わない見込み"
+                            className="whitespace-nowrap rounded-full bg-red-600 px-2 py-0.5 text-xs font-semibold text-white"
+                          >
+                            ⚠ {day.arrivalConflicts!.length}件
+                          </span>
+                          <p className="min-w-[10rem] text-xs text-red-700">
+                            {day.arrivalConflicts!
+                              .map(c => `${c.locationName}（${format(new Date(c.requestedArrivalTime), 'HH:mm')}指定）`)
+                              .join('、')}
+                          </p>
+                        </div>
                       ) : (
                         <span className="text-xs text-[#4B5563]">OK</span>
                       )}
