@@ -183,6 +183,9 @@ export async function POST(
       lat: number;
       lng: number;
       arrivalTime: string | null;
+      /** 到着の時間帯（目安）。この画面では変えず、登録済みの値をそのまま使う */
+      windowStart: string | null;
+      windowEnd: string | null;
       /** リクエストで新たに指定された荷物一覧。undefinedなら既存の荷物データを変更しない */
       packagesToSync: PackageInput[] | undefined;
       /** 容積・サイズチェックに使う実効的な荷物一覧（新規指定 or 既存データ） */
@@ -192,6 +195,14 @@ export async function POST(
        *  trueの場合のみDeliveryStop.addedAfterDepartureを立てる */
       isNewToRoute: boolean;
     };
+    // 時間指定（arrivalTime）がある場合は時間帯を使わない（どちらか一方だけ）
+    const windowOf = (
+      s: { requestedWindowStart: Date | null; requestedWindowEnd: Date | null },
+      arrivalTime: string | null
+    ): { windowStart: string | null; windowEnd: string | null } =>
+      !arrivalTime && s.requestedWindowStart && s.requestedWindowEnd
+        ? { windowStart: s.requestedWindowStart.toISOString(), windowEnd: s.requestedWindowEnd.toISOString() }
+        : { windowStart: null, windowEnd: null };
     const routeCombined: RouteCombined[] = locationIds.map(id => {
       const existing = pendingByLocationId.get(id);
       if (existing) {
@@ -210,6 +221,7 @@ export async function POST(
           lat: existing.location.lat,
           lng: existing.location.lng,
           arrivalTime,
+          ...windowOf(existing, arrivalTime),
           packagesToSync,
           effectivePackages: packagesToSync ?? existing.packages,
           isExisting: true,
@@ -233,6 +245,7 @@ export async function POST(
           lat: poolStop.location.lat,
           lng: poolStop.location.lng,
           arrivalTime,
+          ...windowOf(poolStop, arrivalTime),
           packagesToSync,
           effectivePackages: packagesToSync ?? poolStop.packages,
           isExisting: true,
@@ -248,6 +261,8 @@ export async function POST(
         lat: location.lat,
         lng: location.lng,
         arrivalTime: arrivalTimes?.[id] ?? null,
+        windowStart: null,
+        windowEnd: null,
         packagesToSync: newPackages,
         effectivePackages: newPackages,
         isExisting: false,

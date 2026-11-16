@@ -17,6 +17,7 @@ import {
   addTimeOutsideLunch,
   DEFAULT_TRAVEL_MODEL,
   TravelModel,
+  ArrivalConstraint,
 } from './routeOptimizer';
 
 export interface TripTimeResult<T> {
@@ -40,7 +41,7 @@ export interface PlanTripsResult<T> {
  *
  * `tripsStops`は便ごとの停車地配列（各便内は未整列でよい。中でorderWithTimeBudgetにかける）。
  */
-export function planTrips<T extends Coord & { arrivalTime?: string | null }>(
+export function planTrips<T extends Coord & ArrivalConstraint>(
   depot: Coord,
   firstDepartureTime: Date,
   tripsStops: T[][],

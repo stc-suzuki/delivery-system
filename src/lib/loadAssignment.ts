@@ -19,6 +19,9 @@ export interface PoolStopInput {
   lng: number;
   // 到着希望時刻（isTimeFixedがtrueの停車地のみ）。指定がなければnull
   arrivalTime: string | null;
+  // 到着の時間帯（目安。timeBands.tsのstopArrivalConstraintで作る）。指定がなければnull・省略
+  windowStart?: string | null;
+  windowEnd?: string | null;
 }
 
 export interface AssignTruckTripInput {
@@ -76,7 +79,7 @@ function stopFitsBed(stop: PoolStopInput, bed: Dimensions): boolean {
 // あるトラックに割り当てた停車地の集合が、到着希望時刻に移動時間の都合で間に合わないものを含むか判定する。
 // 到着希望時刻を持つ停車地が一つもなければ判定するまでもなく常にfalse
 function hasTimeConflict(assignedStops: PoolStopInput[], departureTime: Date, depot: Coord, travel: TravelModel): boolean {
-  if (!assignedStops.some(s => s.arrivalTime)) return false;
+  if (!assignedStops.some(s => s.arrivalTime || s.windowStart)) return false;
   const ordered = orderWithTimeBudget(depot, departureTime, assignedStops, undefined, travel);
   const timed = estimateStopTimes(depot, departureTime, ordered, undefined, undefined, travel);
   return timed.some(s => s.timeConflict);

@@ -6,6 +6,7 @@ import { validatePackagesInput, PackageInput } from '@/lib/planValidation';
 import { computeDayTimeOverflow, DayRouteInput } from '@/lib/dayTimeOverflow';
 import { PoolStopInput } from '@/lib/loadAssignment';
 import { fetchCurrentPositions } from '@/lib/currentPosition';
+import { stopArrivalConstraint, arrivalConflictEntry, TIME_BANDS, bandWindowOnDate } from '@/lib/timeBands';
 
 // 配送先・荷物のプール登録（日付スコープ、配送ルートに非依存）。
 // 未割当（routeId未設定）の停車地に加え、既に手動割当済み（routeId設定済み）の停車地も
@@ -18,8 +19,23 @@ import { fetchCurrentPositions } from '@/lib/currentPosition';
 // 誤って消してしまうことがない。update/removeは対象行のversionを照合し、
 // 自分が読み込んだ時点から他人に更新されていれば拒否する（楽観ロック）。
 
-type PoolAddItem = { locationId: string; arrivalTime?: string | null; packages?: PackageInput[] };
-type PoolUpdateItem = { stopId: string; version: number; arrivalTime?: string | null; packages?: PackageInput[] };
+// band＝時間帯（目安）のキー（timeBands.tsのTIME_BANDS）。arrivalTime（時間指定）とどちらか一方だけ（両方あれば時間指定を使う）
+type PoolAddItem = { locationId: string; arrivalTime?: string | null; band?: string | null; packages?: PackageInput[] };
+type PoolUpdateItem = { stopId: string; version: number; arrivalTime?: string | null; band?: string | null; packages?: PackageInput[] };
+
+// 保存する到着の指定（時間指定・時間帯）。時間帯のキーが不正なら指定なし扱い
+function arrivalFields(dateStr: string, item: { arrivalTime?: string | null; band?: string | null }) {
+  const requestedArrivalTime = item.arrivalTime ? new Date(item.arrivalTime) : null;
+  const band = !requestedArrivalTime && item.band ? TIME_BANDS.find(b => b.key === item.band) : undefined;
+  const w = band ? bandWindowOnDate(dateStr, band) : null;
+  return {
+    requestedArrivalTime,
+    requestedWindowStart: w?.start ?? null,
+    requestedWindowEnd: w?.end ?? null,
+    scheduledTime: requestedArrivalTime,
+    isTimeFixed: !!requestedArrivalTime,
+  };
+}
 type PoolRemoveItem = { stopId: string; version: number };
 type NotSavedEntry = { locationName: string; reason: string };
 
@@ -116,7 +132,7 @@ export async function GET(req: NextRequest) {
       name: s.location.name,
       lat: s.location.lat,
       lng: s.location.lng,
-      arrivalTime: s.requestedArrivalTime ? s.requestedArrivalTime.toISOString() : null,
+      ...stopArrivalConstraint(s),
       packages: s.packages,
     });
   }
@@ -125,7 +141,7 @@ export async function GET(req: NextRequest) {
     name: s.location.name,
     lat: s.location.lat,
     lng: s.location.lng,
-    arrivalTime: s.requestedArrivalTime ? s.requestedArrivalTime.toISOString() : null,
+    ...stopArrivalConstraint(s),
     packages: s.packages,
   }));
 
@@ -154,7 +170,8 @@ export async function GET(req: NextRequest) {
     // 割当済みは今のトラック、未割当は上の仮の振り分けで判定した結果
     arrivalConflicts: timeOverflowResult.arrivalConflictStopIds.flatMap(id => {
       const s = stops.find(st => st.id === id);
-      return s?.requestedArrivalTime ? [{ stopId: s.id, locationName: s.location.name, requestedArrivalTime: s.requestedArrivalTime.toISOString() }] : [];
+      const entry = s ? arrivalConflictEntry(s) : null;
+      return entry ? [entry] : [];
     }),
   };
 
@@ -263,9 +280,7 @@ export async function PUT(req: NextRequest) {
             routeId: null,
             locationId: item.locationId,
             stopOrder: 0,
-            requestedArrivalTime: item.arrivalTime ? new Date(item.arrivalTime) : null,
-            scheduledTime: item.arrivalTime ? new Date(item.arrivalTime) : null,
-            isTimeFixed: !!item.arrivalTime,
+            ...arrivalFields(date, item),
             version: 0,
             updatedByName: actorName,
           },
@@ -303,9 +318,7 @@ export async function PUT(req: NextRequest) {
       const result = await prisma.deliveryStop.updateMany({
         where: { id: item.stopId, version: item.version, routeId: null },
         data: {
-          requestedArrivalTime: item.arrivalTime ? new Date(item.arrivalTime) : null,
-          scheduledTime: item.arrivalTime ? new Date(item.arrivalTime) : null,
-          isTimeFixed: !!item.arrivalTime,
+          ...arrivalFields(date, item),
           version: { increment: 1 },
           updatedByName: actorName,
         },

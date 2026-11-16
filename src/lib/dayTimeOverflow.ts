@@ -1,6 +1,6 @@
 // /api/pool・/api/capacity-overview の両方から使う、1日分の時間超過判定のアダプタ層。
 // Prismaの型と timeOverflow.ts（純粋関数）の間の変換だけを担い、判定ロジック自体はtimeOverflow.tsに置く。
-import { checkTimeOverflow, TruckDayInput, TimeOverflowResult } from './timeOverflow';
+import { checkTimeOverflow, evaluateInsertion, TruckDayInput, TimeOverflowResult, InsertionResult } from './timeOverflow';
 import { truckBed } from './loadCapacity';
 import { PoolStopInput } from './loadAssignment';
 import { Coord, LunchBreak, travelModelFromSettings } from './routeOptimizer';
@@ -58,6 +58,58 @@ export function computeDayTimeOverflow(
   poolStops: PoolStopInput[],
   settings: DaySettings
 ): TimeOverflowResult {
+  const day = prepareDay(routes, settings);
+  return checkTimeOverflow(
+    day.trucks,
+    poolStops,
+    day.deliveryEndTime,
+    settings.loadUtilizationPercent,
+    settings.reloadDurationMinutes,
+    day.lunchBreak,
+    settings.defaultStopDurationMinutes,
+    day.depot,
+    day.travel
+  );
+}
+
+// 荷物受付の「空いている日時」の判定：その日の今の状態（baseline）に、候補の配送先を1件ずつ足せるかを調べる。
+// 候補は互いに独立に判定する（同じ配送先を時間帯ごとに試すため、1件ずつ別々に足す）
+export function evaluateDayInsertions(
+  routes: DayRouteInput[],
+  poolStops: PoolStopInput[],
+  settings: DaySettings,
+  candidates: PoolStopInput[]
+): { baseline: TimeOverflowResult; deliveryEndTime: Date; results: InsertionResult[] } {
+  const day = prepareDay(routes, settings);
+  const baseline = checkTimeOverflow(
+    day.trucks,
+    poolStops,
+    day.deliveryEndTime,
+    settings.loadUtilizationPercent,
+    settings.reloadDurationMinutes,
+    day.lunchBreak,
+    settings.defaultStopDurationMinutes,
+    day.depot,
+    day.travel
+  );
+  const results = candidates.map(c =>
+    evaluateInsertion(
+      day.trucks,
+      baseline,
+      c,
+      day.deliveryEndTime,
+      settings.loadUtilizationPercent,
+      settings.reloadDurationMinutes,
+      day.lunchBreak,
+      settings.defaultStopDurationMinutes,
+      day.depot,
+      day.travel
+    )
+  );
+  return { baseline, deliveryEndTime: day.deliveryEndTime, results };
+}
+
+function prepareDay(routes: DayRouteInput[], settings: DaySettings) {
   const lunchStart = resolveTimeOnDate(settings.routeDate, settings.lunchBreakStart);
   const lunchEnd = resolveTimeOnDate(settings.routeDate, settings.lunchBreakEnd);
   const lunchBreak: LunchBreak | undefined =
@@ -87,15 +139,6 @@ export function computeDayTimeOverflow(
     return { ...base, departureTime: now, startPos: r.currentPos, reloadBeforePool: true };
   });
 
-  return checkTimeOverflow(
-    trucks,
-    poolStops,
-    deliveryEndTime,
-    settings.loadUtilizationPercent,
-    settings.reloadDurationMinutes,
-    lunchBreak,
-    settings.defaultStopDurationMinutes,
-    { lat: settings.depotLat, lng: settings.depotLng },
-    travelModelFromSettings(settings)
-  );
+  const depot: Coord = { lat: settings.depotLat, lng: settings.depotLng };
+  return { trucks, deliveryEndTime, lunchBreak, depot, travel: travelModelFromSettings(settings) };
 }

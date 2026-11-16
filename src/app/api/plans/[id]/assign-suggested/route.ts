@@ -6,6 +6,7 @@ import { effectiveCapacityM3, truckBed } from '@/lib/loadCapacity';
 import { assignStopsToTrucks, AssignTruckInput, PoolStopInput } from '@/lib/loadAssignment';
 import { reorderRoute, resolveDeparture } from '@/lib/routeReorder';
 import { travelModelFromSettings } from '@/lib/routeOptimizer';
+import { stopArrivalConstraint } from '@/lib/timeBands';
 
 // 「参考の割当案をすべて反映」：/suggest と同じFFD計算を行い、その結果をそのまま
 // 手動割当として確定する。すでに手動割当済みの停車地には一切触れない
@@ -81,7 +82,7 @@ export async function POST(
       packages: s.packages,
       lat: s.location.lat,
       lng: s.location.lng,
-      arrivalTime: s.requestedArrivalTime ? s.requestedArrivalTime.toISOString() : null,
+      ...stopArrivalConstraint(s),
     }));
 
     const result = assignStopsToTrucks(

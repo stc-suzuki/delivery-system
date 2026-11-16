@@ -22,6 +22,8 @@ import RelativeDayBadge from '@/components/plans/RelativeDayBadge';
 import { isDefaultDayOff } from '@/lib/driverSchedule';
 import { checkCapacityOverflow } from '@/lib/loadCapacity';
 import { useDialog } from '@/components/ui/DialogProvider';
+import { arrivalConflictText, bandOfWindow } from '@/lib/timeBands';
+import NewOrderPanel from '@/components/pool/NewOrderPanel';
 
 const WEEKDAY_LABELS = ['日', '月', '火', '水', '木', '金', '土'];
 const DEFAULT_HORIZON_DAYS = 10;
@@ -32,6 +34,8 @@ type ApiStop = {
   locationId: string;
   scheduledTime: string | null;
   requestedArrivalTime: string | null;
+  requestedWindowStart: string | null;
+  requestedWindowEnd: string | null;
   isTimeFixed: boolean;
   status: string;
   version: number;
@@ -58,11 +62,19 @@ type TimeOverflowSummary = {
   overCapacityTime: boolean;
   deliveryEndTime: string;
   latestFinishTime: string | null;
-  arrivalConflicts: { stopId: string; locationName: string; requestedArrivalTime: string }[];
+  arrivalConflicts: { stopId: string; locationName: string; requestedArrivalTime: string | null; windowLabel: string | null }[];
 };
 
-function arrivalConflictLabel(c: TimeOverflowSummary['arrivalConflicts'][number]): string {
-  return `${c.locationName}（${format(new Date(c.requestedArrivalTime), 'HH:mm')}指定）`;
+const arrivalConflictLabel = arrivalConflictText;
+
+// 停車地の到着の指定を、PoolEditorの値の形（''／'band:AM'等／'HH:mm'）にする
+function arrivalValueOf(s: ApiStop): string {
+  if (s.isTimeFixed && s.requestedArrivalTime) return format(new Date(s.requestedArrivalTime), 'HH:mm');
+  if (s.requestedWindowStart && s.requestedWindowEnd) {
+    const band = bandOfWindow(s.requestedWindowStart, s.requestedWindowEnd);
+    if (band) return `band:${band.key}`;
+  }
+  return '';
 }
 
 function sumPackagesVolume(pkgs: { width: number; depth: number; height: number }[]): number {
@@ -121,6 +133,22 @@ function PoolPageContent() {
   const [monthCounts, setMonthCounts] = useState<Record<string, number>>({});
   const [excludeWeekendsAndHolidays, setExcludeWeekendsAndHolidays] = useState(false);
   const [horizonDays, setHorizonDays] = useState(DEFAULT_HORIZON_DAYS);
+  // 「新規の受付」（電話で1件ずつ、空き日時を見て受け付ける。2026-11-16導入）と
+  // 「登録内容の確認・修正」（日付を選んでその日の一覧を見る、今までの画面）。URLに?tab=editで後者
+  const [tab, setTab] = useState<'new' | 'edit'>(searchParams.get('tab') === 'edit' || searchParams.get('date') ? 'edit' : 'new');
+  const switchTab = async (next: 'new' | 'edit') => {
+    if (next === tab) return;
+    if (tab === 'edit' && dirty && !(await confirmDialog('保存していない変更があります。破棄して切り替えますか？'))) return;
+    if (tab === 'edit' && dirty) {
+      setDirty(false);
+      await fetchPool(date);
+    }
+    setTab(next);
+    const params = new URLSearchParams(searchParams.toString());
+    if (next === 'edit') params.set('tab', 'edit');
+    else params.delete('tab');
+    router.replace(`/pool${params.toString() ? `?${params}` : ''}`);
+  };
 
   useEffect(() => {
     fetch('/api/settings')
@@ -182,7 +210,8 @@ function PoolPageContent() {
       poolData.unassignedStops.forEach(s => {
         ids.add(s.locationId);
         unassignedCountByLocation.set(s.locationId, (unassignedCountByLocation.get(s.locationId) ?? 0) + 1);
-        if (s.isTimeFixed && s.requestedArrivalTime) times[s.locationId] = format(new Date(s.requestedArrivalTime), 'HH:mm');
+        const v = arrivalValueOf(s);
+        if (v) times[s.locationId] = v;
         pkgs[s.locationId] = groupPackagesByProduct(s.packages);
       });
       setSelectedLocationIds(ids);
@@ -210,7 +239,7 @@ function PoolPageContent() {
         snapshots.set(s.locationId, {
           stopId: s.id,
           version: s.version,
-          arrivalTime: s.isTimeFixed && s.requestedArrivalTime ? format(new Date(s.requestedArrivalTime), 'HH:mm') : '',
+          arrivalTime: arrivalValueOf(s),
           packagesCanonical: canonicalizePackages(s.packages),
         });
       });
@@ -392,9 +421,15 @@ function PoolPageContent() {
     }, 0);
   }
 
+  // 到着の指定の値（PoolEditorのallowTimeBands参照）のうち、時間指定（HH:mm）だけを日時にする
   function timeToIso(time: string): string | null {
-    if (!time) return null;
+    if (!/^\d{2}:\d{2}$/.test(time)) return null;
     return new Date(`${date}T${time}:00`).toISOString();
+  }
+
+  // 時間帯（'band:AM'等）ならその時間帯のキー
+  function bandKeyOf(value: string): string | null {
+    return value.startsWith('band:') ? value.slice('band:'.length) : null;
   }
 
   function packagesPayloadFor(locationId: string): PackagePayload[] {
@@ -421,8 +456,8 @@ function PoolPageContent() {
       const currentIds = Array.from(selectedLocationIds).filter(id => !poolConflicts.has(id));
       const currentIdSet = new Set(currentIds);
 
-      const add: { locationId: string; arrivalTime: string | null; packages: PackagePayload[] }[] = [];
-      const update: { stopId: string; version: number; arrivalTime: string | null; packages: PackagePayload[] }[] = [];
+      const add: { locationId: string; arrivalTime: string | null; band: string | null; packages: PackagePayload[] }[] = [];
+      const update: { stopId: string; version: number; arrivalTime: string | null; band: string | null; packages: PackagePayload[] }[] = [];
       const remove: { stopId: string; version: number }[] = [];
 
       initialStops.forEach((snap, locationId) => {
@@ -436,15 +471,18 @@ function PoolPageContent() {
         const arrivalTime = arrivalTimes[locationId] ?? '';
         const pkgs = packagesPayloadFor(locationId);
         const arrivalIso = timeToIso(arrivalTime);
+        const band = bandKeyOf(arrivalTime);
 
         if (!snap) {
-          add.push({ locationId, arrivalTime: arrivalIso, packages: pkgs });
+          add.push({ locationId, arrivalTime: arrivalIso, band, packages: pkgs });
           continue;
         }
+        // 「時刻を指定」を選んだまま時刻が空なら、指定なしとして比べる
+        const comparable = arrivalIso || band ? arrivalTime : '';
         const changed =
-          snap.arrivalTime !== arrivalTime || snap.packagesCanonical !== canonicalizePackages(pkgs);
+          snap.arrivalTime !== comparable || snap.packagesCanonical !== canonicalizePackages(pkgs);
         if (changed) {
-          update.push({ stopId: snap.stopId, version: snap.version, arrivalTime: arrivalIso, packages: pkgs });
+          update.push({ stopId: snap.stopId, version: snap.version, arrivalTime: arrivalIso, band, packages: pkgs });
         }
       }
 
@@ -537,9 +575,32 @@ function PoolPageContent() {
       <PageHeader
         icon={Package}
         title="荷物受付"
-        description="その日「どこ」に「何」を届けるかだけを登録できます。　※ 配送計画は配送管理者が行います。計画作成後は「配送計画一覧」で確認できます。"
+        description="電話で受けた配送先・荷物を、空いている日時を見ながら1件ずつ受け付けます。※ 配送計画は配送管理者が行います。"
         tint="blue"
       />
+      <div className="flex border-b border-gray-200">
+        {(
+          [
+            ['new', '新規の受付'],
+            ['edit', '登録内容の確認・修正'],
+          ] as const
+        ).map(([key, label]) => (
+          <button
+            key={key}
+            type="button"
+            onClick={() => switchTab(key)}
+            className={`-mb-px border-b-2 px-4 py-2 text-sm ${
+              tab === key ? 'border-blue-600 font-semibold text-gray-900' : 'border-transparent text-gray-500 hover:text-gray-700'
+            }`}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
+      {tab === 'new' ? (
+        <NewOrderPanel onRegistered={() => fetchMonthCounts(calendarMonth)} />
+      ) : (
+      <>
       {date === today && (
         <p className="text-sm text-gray-500">配送当日（トラックが出発する前）も追加・変更が可能です。</p>
       )}
@@ -761,6 +822,7 @@ function PoolPageContent() {
               poolConflictInfo={poolConflicts}
               editable
               confirmOnDeselect
+              allowTimeBands
               listMaxHeightClassName="max-h-[28rem]"
               onToggleLocation={toggleLocation}
               onUpdateArrivalTime={updateArrivalTime}
@@ -808,6 +870,8 @@ function PoolPageContent() {
       )}
       </div>
       </div>
+      </>
+      )}
     </div>
   );
 }

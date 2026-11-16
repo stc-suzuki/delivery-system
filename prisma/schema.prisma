@@ -176,6 +176,14 @@ model DeliveryStop {
   // お客様に約束した到着希望時刻そのもの。プール登録・荷物編集画面でユーザーが入力した時だけ書き換わり、
   // reorderRoute等のルート再計算では絶対に上書きしない（移動時間の都合で守れない場合でも、この値自体は変更しない）
   requestedArrivalTime DateTime?
+  // お客様と決めた到着の時間帯（目安。2026-11-16導入、例：8:00〜12:00）。「この時間帯の中に着けばよい」
+  // という条件で、時間指定（requestedArrivalTime＝その時刻ちょうど）とは別物。どちらか一方だけを持つ。
+  // 後から他の荷物が入れば超えることもある目安で、ルート計算では時間指定を優先する
+  requestedWindowStart DateTime?
+  requestedWindowEnd   DateTime?
+  // 受け付けた日時（2026-11-16追加。荷物受付の配送先一覧を「最近受け付けた順」に並べるため）。
+  // 追加前からある行は追加した時刻が入っている
+  createdAt     DateTime      @default(now())
   // 現在のルート計算に基づく到着予定時刻（見込み）。requestedArrivalTimeが実現可能な間はその値と一致するが、
   // 移動時間の都合で間に合わない場合はreorderRouteが実現可能な時刻に置き換える。表示にはrequestedArrivalTimeを優先すること
   scheduledTime DateTime?

@@ -1,6 +1,7 @@
 import { Prisma } from '@prisma/client';
 import { addTimeOutsideLunch, LunchBreak, Coord, travelModelFromSettings } from './routeOptimizer';
 import { planTrips } from './tripPlanning';
+import { stopArrivalConstraint } from './timeBands';
 
 type Tx = Prisma.TransactionClient;
 
@@ -71,7 +72,7 @@ export async function reorderRoute(tx: Tx, routeId: string): Promise<{ warnings:
       id: stop.id,
       lat: stop.location.lat,
       lng: stop.location.lng,
-      arrivalTime: stop.requestedArrivalTime ? stop.requestedArrivalTime.toISOString() : null,
+      ...stopArrivalConstraint(stop),
     }))
   );
 
@@ -102,7 +103,7 @@ export async function reorderRoute(tx: Tx, routeId: string): Promise<{ warnings:
     for (const item of planned.stops) {
       if (item.timeConflict) {
         warnings.push(
-          `${locationById.get(item.id)}: 希望到着時刻には移動時間の都合で間に合わない可能性があります（推定到着 ${item.estimatedTime.getHours()}:${String(item.estimatedTime.getMinutes()).padStart(2, '0')}）`
+          `${locationById.get(item.id)}: ${item.arrivalTime ? '希望到着時刻' : '到着の時間帯（目安）'}には移動時間の都合で間に合わない可能性があります（推定到着 ${item.estimatedTime.getHours()}:${String(item.estimatedTime.getMinutes()).padStart(2, '0')}）`
         );
       }
       await tx.deliveryStop.update({
@@ -185,7 +186,7 @@ export async function rescheduleFollowingTrips(
       id: stop.id,
       lat: stop.location.lat,
       lng: stop.location.lng,
-      arrivalTime: stop.requestedArrivalTime ? stop.requestedArrivalTime.toISOString() : null,
+      ...stopArrivalConstraint(stop),
     }))
   );
 
@@ -215,7 +216,7 @@ export async function rescheduleFollowingTrips(
     for (const item of planned.stops) {
       if (item.timeConflict) {
         warnings.push(
-          `${locationById.get(item.id)}: 希望到着時刻には移動時間の都合で間に合わない可能性があります（推定到着 ${item.estimatedTime.getHours()}:${String(item.estimatedTime.getMinutes()).padStart(2, '0')}）`
+          `${locationById.get(item.id)}: ${item.arrivalTime ? '希望到着時刻' : '到着の時間帯（目安）'}には移動時間の都合で間に合わない可能性があります（推定到着 ${item.estimatedTime.getHours()}:${String(item.estimatedTime.getMinutes()).padStart(2, '0')}）`
         );
       }
       await tx.deliveryStop.update({

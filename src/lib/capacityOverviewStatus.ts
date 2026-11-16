@@ -10,8 +10,9 @@ export type DayCapacity = {
   effectiveM3: number;
   overCapacity: boolean;
   overTime: boolean;
-  /** 時間指定に間に合わない見込みの配送先（荷物受付の見込み欄と同じ判定） */
-  arrivalConflicts?: { locationName: string; requestedArrivalTime: string }[];
+  /** 時間指定・時間帯（目安）に間に合わない見込みの配送先（荷物受付の見込み欄と同じ判定）。
+   *  時間指定ならrequestedArrivalTime、時間帯ならwindowLabel（例：8–12）が入る */
+  arrivalConflicts?: { locationName: string; requestedArrivalTime: string | null; windowLabel?: string | null }[];
 };
 
 export type DayStatusKind = 'no-truck' | 'no-capacity' | 'over' | 'warning' | 'ok';

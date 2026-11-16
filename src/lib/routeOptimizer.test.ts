@@ -180,6 +180,69 @@ describe('orderWithTimeBudget（到着希望時刻を守りつつ順番を決め
   });
 });
 
+// 時間帯（目安）＝「この時間帯の中に着けばよい」（2026-11-16導入）
+const band = (start: string, end: string) => ({ windowStart: jst(start).toISOString(), windowEnd: jst(end).toISOString() });
+
+describe('estimateStopTimes（時間帯の配送先）', () => {
+  it('時間帯の始まりより早く着く場合は、始まりまで待つ', () => {
+    const [s] = estimateStopTimes(depot, jst('08:00'), [{ id: 'a', ...northKm(15), ...band('15:00', '17:00') }]);
+    expectTime(s.estimatedTime, jst('15:00'));
+    expect(s.timeConflict).toBe(false);
+  });
+
+  it('時間帯の中に着く場合は、着いた時刻のまま', () => {
+    const [s] = estimateStopTimes(depot, jst('08:00'), [{ id: 'a', ...northKm(15), ...band('08:00', '12:00') }]);
+    expectTime(s.estimatedTime, jst('08:30'));
+    expect(s.timeConflict).toBe(false);
+  });
+
+  it('時間帯の終わりちょうどに着く場合は間に合う扱い', () => {
+    const [s] = estimateStopTimes(depot, jst('11:30'), [{ id: 'a', ...northKm(15), ...band('08:00', '12:00') }]);
+    expectTime(s.estimatedTime, jst('12:00'));
+    expect(s.timeConflict).toBe(false);
+  });
+
+  it('時間帯の終わりを過ぎて着く場合は、着いた時刻にして矛盾ありとする', () => {
+    const [s] = estimateStopTimes(depot, jst('11:40'), [{ id: 'a', ...northKm(15), ...band('08:00', '12:00') }]);
+    expectTime(s.estimatedTime, jst('12:10'));
+    expect(s.timeConflict).toBe(true);
+  });
+
+  it('12–15の時間帯に早く着いた場合は、昼休みを除いた13:00まで待つ', () => {
+    const [s] = estimateStopTimes(depot, jst('11:00'), [{ id: 'a', ...northKm(15), ...band('12:00', '15:00') }], lunch);
+    expectTime(s.estimatedTime, jst('13:00'));
+    expect(s.timeConflict).toBe(false);
+  });
+});
+
+describe('orderWithTimeBudget（時間帯の配送先を含む）', () => {
+  it('午後の時間帯の配送先は、指定なしの配送先より後に回す', () => {
+    const pm = { id: 'pm', ...northKm(5), ...band('15:00', '17:00') };
+    const free = { id: 'free', ...northKm(20), arrivalTime: null };
+    expect(orderWithTimeBudget(depot, jst('08:00'), [pm, free]).map(s => s.id)).toEqual(['free', 'pm']);
+  });
+
+  it('午前の時間帯に間に合わなくなる寄り道はしない', () => {
+    // 近い東5km（11:30着）に先に寄ると、荷下ろし後に北15kmへ着くのが12:11頃で12:00を過ぎる。先に北15kmへ行く
+    const am = { id: 'am', ...northKm(15), ...band('08:00', '12:00') };
+    const free = { id: 'free', ...eastKm(5), arrivalTime: null };
+    expect(orderWithTimeBudget(depot, jst('11:20'), [free, am]).map(s => s.id)).toEqual(['am', 'free']);
+  });
+
+  it('時間指定と時間帯が両立しない場合は、時間指定を守る', () => {
+    // 10:00に北15km（ちょうど）。東20kmの8–10時間帯に先に寄ると10:00に着けないため、時間指定を先にする
+    const exact = { id: 'exact', ...northKm(15), arrivalTime: jst('10:00').toISOString() };
+    const am = { id: 'am', ...eastKm(20), ...band('08:00', '10:00') };
+    expect(orderWithTimeBudget(depot, jst('09:20'), [am, exact]).map(s => s.id)).toEqual(['exact', 'am']);
+  });
+
+  it('時間帯がなければ、時間指定だけの従来の並び方のまま', () => {
+    const anchor = { id: 'anchor', ...northKm(15), arrivalTime: jst('11:00').toISOString() };
+    const onTheWay = { id: 'onTheWay', ...northKm(5), arrivalTime: null, windowStart: null, windowEnd: null };
+    expect(orderWithTimeBudget(depot, jst('09:00'), [anchor, onTheWay]).map(s => s.id)).toEqual(['onTheWay', 'anchor']);
+  });
+});
+
 describe('travelTimeMs（移動時間の見積もり・補正つき）', () => {
   // 1区間8分＋直線距離×1.2÷時速45km。真北15kmなら 8 + 15×1.2÷45×60 = 8 + 24 = 32分
   const travel: TravelModel = { averageSpeedKmh: 45, detourFactor: 1.2, perLegMinutes: 8 };

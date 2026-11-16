@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { PoolStopInput } from './loadAssignment';
 import { Coord } from './routeOptimizer';
-import { TruckDayInput, checkTimeOverflow } from './timeOverflow';
+import { TruckDayInput, checkTimeOverflow, evaluateInsertion } from './timeOverflow';
 
 const depot: Coord = { lat: 36.5657, lng: 139.8836 };
 const KM_PER_DEGREE = (6371 * Math.PI) / 180;
@@ -52,7 +52,7 @@ describe('checkTimeOverflow（荷物受付の定時超過判定）', () => {
 
   it('配送先がないトラックは本社帰着予定なし・超過なし', () => {
     const result = checkTimeOverflow([truck('t1')], [], jst('17:00'), 100, 30, undefined, 10, depot);
-    expect(result.truckResults).toEqual([{ truckId: 't1', finishTime: null, overDeadline: false, arrivalConflictStopIds: [] }]);
+    expect(result.truckResults).toEqual([{ truckId: 't1', finishTime: null, overDeadline: false, arrivalConflictStopIds: [], stops: [] }]);
   });
 
   it('1台では定時に間に合わない量でも、2台に分ければ間に合うと判定する', () => {
@@ -154,5 +154,62 @@ describe('checkTimeOverflow（荷物受付の定時超過判定）', () => {
       const result = checkTimeOverflow([t1], [east], jst('17:00'), 100, 30, undefined, 10, depot);
       expect(result.arrivalConflictStopIds).toHaveLength(1);
     });
+  });
+});
+
+// 荷物受付の「空いている日時」の判定（2026-11-16導入）：今の状態に新しい配送先を1件足せるか
+describe('evaluateInsertion（新しい配送先を1件足せるか）', () => {
+  const band = (start: string, end: string) => ({ windowStart: jst(start).toISOString(), windowEnd: jst(end).toISOString() });
+  const at = (id: string, bearing: number, km: number, extra: Partial<PoolStopInput> = {}): PoolStopInput => ({ ...stopAt(id, bearing, km), ...extra });
+  const evaluate = (trucks: TruckDayInput[], pool: PoolStopInput[], candidate: PoolStopInput, deadline = '17:00') => {
+    const baseline = checkTimeOverflow(trucks, pool, jst(deadline), 100, 30, undefined, 10, depot);
+    return evaluateInsertion(trucks, baseline, candidate, jst(deadline), 100, 30, undefined, 10, depot);
+  };
+
+  it('時間帯の中に着けて、定時にも間に合えば受け付けられる', () => {
+    const r = evaluate([truck('t1')], [], at('new', 0, 15, band('08:00', '12:00')));
+    expect(r.ok).toBe(true);
+    expect(r.truckId).toBe('t1');
+    expectTime(r.candidateArrival, jst('09:30'));
+    expectTime(r.finishTime, jst('10:10'));
+  });
+
+  it('時間指定の時刻に着けない場合は受け付けない（最短の到着予定も返す）', () => {
+    const r = evaluate([truck('t1')], [], at('new', 0, 15, { arrivalTime: jst('09:10').toISOString() }));
+    expect(r.ok).toBe(false);
+    expect(r.failure).toBe('arrival');
+    expectTime(r.candidateArrival, jst('09:30'));
+  });
+
+  it('後から受けた時間指定で、先に受けた時間帯の配送先が外れる場合は受け付けない', () => {
+    // 先に受けた北30km・8–10（10:00ちょうどに着く）。東15kmの9:30指定に先に寄ると北30kmは10:47着になる
+    const earlier = at('earlier', 0, 30, band('08:00', '10:00'));
+    const t1 = truck('t1', null, { assignedStops: [earlier] });
+    const r = evaluate([t1], [], at('new', 90, 15, { arrivalTime: jst('09:30').toISOString() }));
+    expect(r.ok).toBe(false);
+    expect(r.failure).toBe('breaks-others');
+    expect(r.brokenStopIds).toEqual(['earlier']);
+  });
+
+  it('別のトラックなら誰も崩さずに積める場合は、そのトラックで受け付ける', () => {
+    const earlier = at('earlier', 0, 30, band('08:00', '10:00'));
+    const t1 = truck('t1', null, { assignedStops: [earlier] });
+    const r = evaluate([t1, truck('t2')], [], at('new', 90, 15, { arrivalTime: jst('09:30').toISOString() }));
+    expect(r.ok).toBe(true);
+    expect(r.truckId).toBe('t2');
+  });
+
+  it('定時までに本社へ戻れない場合は受け付けない（本社帰着予定も返す）', () => {
+    const r = evaluate([truck('t1')], [], at('new', 0, 15), '10:00');
+    expect(r.ok).toBe(false);
+    expect(r.failure).toBe('deadline');
+    expectTime(r.failureFinishTime!, jst('10:10'));
+  });
+
+  it('どのトラックの荷台にも入らない荷物は受け付けない', () => {
+    const small = truck('t1', null, { bed: { width: 0.1, depth: 0.1, height: 0.1 } });
+    const r = evaluate([small], [], at('new', 0, 15));
+    expect(r.ok).toBe(false);
+    expect(r.failure).toBe('size');
   });
 });

@@ -50,6 +50,8 @@ export async function POST(
           locationId: stop.locationId,
           stopOrder: 0,
           requestedArrivalTime: stop.requestedArrivalTime,
+          requestedWindowStart: stop.requestedWindowStart,
+          requestedWindowEnd: stop.requestedWindowEnd,
           scheduledTime: stop.scheduledTime,
           isTimeFixed: stop.isTimeFixed,
         },

@@ -18,6 +18,7 @@ import { WARNING_USAGE_RATIO } from '@/lib/capacityOverviewStatus';
 import { effectiveCapacityM3 } from '@/lib/loadCapacity';
 import { DRIVER_TYPE_LABELS } from '@/lib/driverSchedule';
 import { useDialog } from '@/components/ui/DialogProvider';
+import { windowLabel } from '@/lib/timeBands';
 import type { DriverType, RouteStatus } from '@prisma/client';
 
 // 「配送先の割当」の一覧表示用。同一商品（商品名・寸法が一致するもの）をまとめ、
@@ -79,6 +80,8 @@ type ApiStop = {
   status: string;
   scheduledTime: string | null;
   requestedArrivalTime: string | null;
+  requestedWindowStart?: string | null;
+  requestedWindowEnd?: string | null;
   isTimeFixed: boolean;
   hasTimeConflict: boolean;
   // 稼働開始後に「配送先の割当」で追加された停車地か。falseは出発時から積んでいた分
@@ -1131,7 +1134,11 @@ export default function PlanDetailPage() {
                                   {stop.location.name}
                                   <span className="ml-1 text-xs text-[#4B5563]">
                                     （{stop.location.city}・{stopVolume(stop.packages).toFixed(2)}m3
-                                    {stop.requestedArrivalTime && `・希望${format(new Date(stop.requestedArrivalTime), 'HH:mm')}`}）
+                                    {stop.requestedArrivalTime
+                                  ? `・希望${format(new Date(stop.requestedArrivalTime), 'HH:mm')}`
+                                  : stop.requestedWindowStart && stop.requestedWindowEnd
+                                    ? `・${windowLabel(stop.requestedWindowStart, stop.requestedWindowEnd)}（目安）`
+                                    : ''}）
                                   </span>
                                 </span>
                                 {stop.packages.length > 0 ? (
@@ -1243,7 +1250,11 @@ export default function PlanDetailPage() {
                               {stop.location.name}
                               <span className="ml-1 text-xs text-gray-600">
                                 （{stop.location.city}・{stopVolume(stop.packages).toFixed(2)}m3
-                                {stop.requestedArrivalTime && `・希望${format(new Date(stop.requestedArrivalTime), 'HH:mm')}`}）
+                                {stop.requestedArrivalTime
+                                  ? `・希望${format(new Date(stop.requestedArrivalTime), 'HH:mm')}`
+                                  : stop.requestedWindowStart && stop.requestedWindowEnd
+                                    ? `・${windowLabel(stop.requestedWindowStart, stop.requestedWindowEnd)}（目安）`
+                                    : ''}）
                               </span>
                             </span>
                             {suggestedRouteId && (

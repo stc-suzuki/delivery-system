@@ -109,17 +109,55 @@ export function addTimeOutsideLunch(start: Date, durationMs: number, lunchBreak?
   return new Date(end);
 }
 
+// 停車地の到着の条件。arrivalTime＝時間指定（その時刻ちょうど）、windowStart/windowEnd＝時間帯
+// （その中に着けばよい目安。2026-11-16導入）。どちらか一方だけを持つ
+export interface ArrivalConstraint {
+  arrivalTime?: string | null;
+  windowStart?: string | null;
+  windowEnd?: string | null;
+}
+
+export interface ArrivalWindow {
+  start: number;
+  end: number;
+  /** 時間指定（ちょうど）ならtrue。時間帯ならfalse */
+  exact: boolean;
+}
+
+export function arrivalWindowOf(s: ArrivalConstraint): ArrivalWindow | null {
+  if (s.arrivalTime) {
+    const t = new Date(s.arrivalTime).getTime();
+    return { start: t, end: t, exact: true };
+  }
+  if (s.windowStart && s.windowEnd) {
+    return { start: new Date(s.windowStart).getTime(), end: new Date(s.windowEnd).getTime(), exact: false };
+  }
+  return null;
+}
+
+// 着いた時刻から、実際に荷下ろしを始める時刻（＝到着予定として扱う時刻）を求める。時間指定は指定の時刻まで、
+// 時間帯は始まりまで待つ（始まりが昼休み中なら休憩明けまで）。条件がない・既に過ぎていれば着いた時刻のまま
+export function serviceStartAt(arrival: Date, w: ArrivalWindow | null, lunchBreak?: LunchBreak): Date {
+  if (!w || arrival.getTime() >= w.start) return arrival;
+  if (w.exact) return new Date(w.start);
+  return skipLunchBreak(new Date(w.start), lunchBreak);
+}
+
+// 並び順を決める。時間帯（目安）の停車地があればorderWithWindows、なければ従来の方法：
 // 到着希望時刻が指定された地点は「その時刻までに着けばよい」制約として扱い、
 // 直前の到着（または出発）からその制約時刻までの余裕時間がある限り、近くの
 // 時刻未指定地点を経由させる。余裕がなくなった時点でその地点群への挿入を止め、
 // 残りは次の制約区間（または最後の制約後）に回す。
-export function orderWithTimeBudget<T extends Coord & { arrivalTime?: string | null }>(
+export function orderWithTimeBudget<T extends Coord & ArrivalConstraint>(
   depot: Coord,
   departureTime: Date,
   stops: T[],
   lunchBreak?: LunchBreak,
   travel: TravelModel = DEFAULT_TRAVEL_MODEL
 ): T[] {
+  if (stops.some(s => !s.arrivalTime && s.windowStart && s.windowEnd)) {
+    return orderWithWindows(depot, departureTime, stops, lunchBreak, travel);
+  }
   const timed = stops
     .filter(s => s.arrivalTime)
     .sort((a, b) => new Date(a.arrivalTime as string).getTime() - new Date(b.arrivalTime as string).getTime());
@@ -168,12 +206,76 @@ export function orderWithTimeBudget<T extends Coord & { arrivalTime?: string | n
   return order;
 }
 
+// 時間帯（目安）の停車地を含む並び順（2026-11-16導入）。今いる場所・時刻から、次の候補を
+// 次の優先順で1件ずつ選ぶ貪欲法（最適解の保証はない）：
+//  1. その停車地に寄ると、今ならまだ間に合う時間指定（ちょうど）の停車地に間に合わなくなる件数が少ない
+//  2. 同じく、今ならまだ間に合う時間帯の停車地に間に合わなくなる件数が少ない
+//  3. 荷下ろしを始められる時刻が早い（時間帯の始まり前に着くなら待ち時間込み）。早い時間帯・近い停車地が先に来る
+// 時間指定を時間帯より先に比べるのは、時間指定（約束）を時間帯（目安）より優先して守るため（2026-11-16決定）。
+// 「間に合わなくなるか」は寄った後に直接向かった場合で見る（必要条件だけの簡易な判定）
+function orderWithWindows<T extends Coord & ArrivalConstraint>(
+  depot: Coord,
+  departureTime: Date,
+  stops: T[],
+  lunchBreak: LunchBreak | undefined,
+  travel: TravelModel
+): T[] {
+  const windowByStop = new Map<T, ArrivalWindow | null>(stops.map(s => [s, arrivalWindowOf(s)]));
+  const arriveAt = (from: Coord, t: Date, to: Coord) =>
+    skipLunchBreak(addTimeOutsideLunch(t, travelMs(from, to, travel), lunchBreak), lunchBreak);
+
+  const remaining = [...stops];
+  const order: T[] = [];
+  let pos: Coord = depot;
+  let time = departureTime;
+
+  while (remaining.length > 0) {
+    const savable = remaining.filter(s => {
+      const w = windowByStop.get(s);
+      return !!w && arriveAt(pos, time, s).getTime() <= w.end;
+    });
+
+    let best: { stop: T; lostExact: number; lostBand: number; start: number; leave: Date } | null = null;
+    for (const s of remaining) {
+      const start = serviceStartAt(arriveAt(pos, time, s), windowByStop.get(s) ?? null, lunchBreak);
+      const leave = addTimeOutsideLunch(start, DWELL_MS, lunchBreak);
+      let lostExact = 0;
+      let lostBand = 0;
+      for (const o of savable) {
+        if (o === s) continue;
+        const ow = windowByStop.get(o)!;
+        if (arriveAt(s, leave, o).getTime() > ow.end) {
+          if (ow.exact) lostExact++;
+          else lostBand++;
+        }
+      }
+      const cand = { stop: s, lostExact, lostBand, start: start.getTime(), leave };
+      if (
+        !best ||
+        cand.lostExact < best.lostExact ||
+        (cand.lostExact === best.lostExact && cand.lostBand < best.lostBand) ||
+        (cand.lostExact === best.lostExact && cand.lostBand === best.lostBand && cand.start < best.start)
+      ) {
+        best = cand;
+      }
+    }
+
+    order.push(best!.stop);
+    remaining.splice(remaining.indexOf(best!.stop), 1);
+    pos = best!.stop;
+    time = best!.leave;
+  }
+
+  return order;
+}
+
 export type StopTimeEstimate<T> = T & { estimatedTime: Date; timeConflict: boolean };
 
 // 出発時刻からの移動時間（直線距離÷平均速度）を積算して各停車地の到着予定時刻を推定する。
 // 到着希望時刻が指定されている場合はその時刻を優先するが、直前の停車地からの移動時間で
 // 間に合わない場合は到達可能な最短時刻にフォールバックし timeConflict を立てる。
-export function estimateStopTimes<T extends Coord & { arrivalTime?: string | null }>(
+// 時間帯（目安）の場合は、始まりより早く着くなら始まりまで待ち、終わりを過ぎて着くならtimeConflictを立てる
+export function estimateStopTimes<T extends Coord & ArrivalConstraint>(
   depot: Coord,
   departureTime: Date,
   orderedStops: T[],
@@ -189,16 +291,10 @@ export function estimateStopTimes<T extends Coord & { arrivalTime?: string | nul
   for (const stop of orderedStops) {
     const earliestArrival = skipLunchBreak(addTimeOutsideLunch(currentTime, travelMs(currentPos, stop, travel), lunchBreak), lunchBreak);
 
-    let actualTime = earliestArrival;
-    let timeConflict = false;
-    if (stop.arrivalTime) {
-      const requested = new Date(stop.arrivalTime);
-      if (requested.getTime() < earliestArrival.getTime()) {
-        timeConflict = true;
-      } else {
-        actualTime = requested;
-      }
-    }
+    // 時間指定は従来どおり：指定より早く着けば指定の時刻、遅れれば最短の時刻で矛盾あり
+    const w = arrivalWindowOf(stop);
+    const actualTime = serviceStartAt(earliestArrival, w, lunchBreak);
+    const timeConflict = !!w && earliestArrival.getTime() > w.end;
 
     result.push({ ...stop, estimatedTime: actualTime, timeConflict });
     currentTime = addTimeOutsideLunch(actualTime, dwellMs, lunchBreak);

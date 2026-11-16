@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import { useDialog } from '@/components/ui/DialogProvider';
+import { TIME_BANDS } from '@/lib/timeBands';
 
 export type PoolLocation = { id: string; name: string; address: string; lat: number; lng: number };
 export type PoolProduct = { id: string; name: string; width: number; depth: number; height: number };
@@ -61,6 +62,7 @@ export default function PoolEditor({
   packageVolumeFor,
   confirmOnDeselect = false,
   listMaxHeightClassName = 'max-h-80',
+  allowTimeBands = false,
 }: {
   locations: PoolLocation[];
   products: PoolProduct[];
@@ -86,6 +88,9 @@ export default function PoolEditor({
   confirmOnDeselect?: boolean;
   // 配送先一覧のスクロール枠の高さ（Tailwindのmax-hクラス）。呼び出し画面のレイアウトに合わせて調整できるように
   listMaxHeightClassName?: string;
+  // 到着の指定に時間帯（目安）も選べるようにする（荷物受付の確認・修正。2026-11-16導入）。
+  // arrivalTimesの値は ''＝指定なし、'band:AM'等＝時間帯、'HH:mm'＝時間指定、TIME_PENDING＝時刻を入力中
+  allowTimeBands?: boolean;
 }) {
   const [sortMode, setSortMode] = useState<'default' | 'name' | 'selected'>('default');
   const { confirmDialog } = useDialog();
@@ -171,7 +176,14 @@ export default function PoolEditor({
                     </span>
                   )}
                 </label>
-                {selected && (
+                {selected && allowTimeBands && (
+                  <ArrivalSelect
+                    value={arrivalTimes[loc.id] ?? ''}
+                    disabled={!editable || !!fixed || !!conflict}
+                    onChange={v => onUpdateArrivalTime(loc.id, v)}
+                  />
+                )}
+                {selected && !allowTimeBands && (
                   <input
                     type="time"
                     disabled={!editable || !!fixed || !!conflict}
@@ -243,5 +255,42 @@ export default function PoolEditor({
         })}
       </div>
     </div>
+  );
+}
+
+export const TIME_PENDING = '__time__';
+
+// 到着の指定（指定なし／時間帯（目安）／時刻指定）の選択。値の形はPoolEditorのallowTimeBandsの説明を参照
+function ArrivalSelect({ value, disabled, onChange }: { value: string; disabled: boolean; onChange: (v: string) => void }) {
+  const isTime = value === TIME_PENDING || /^\d{2}:\d{2}$/.test(value);
+  const selectValue = isTime ? TIME_PENDING : value;
+  return (
+    <span className="flex shrink-0 items-center gap-1">
+      <select
+        value={selectValue}
+        disabled={disabled}
+        onChange={e => onChange(e.target.value)}
+        className={`rounded border px-1 py-0.5 text-xs ${
+          isTime ? 'border-red-300 bg-red-50' : value ? 'border-green-300 bg-green-50' : 'border-gray-300'
+        }`}
+      >
+        <option value="">指定なし</option>
+        {TIME_BANDS.map(b => (
+          <option key={b.key} value={`band:${b.key}`}>
+            {b.label}（目安）
+          </option>
+        ))}
+        <option value={TIME_PENDING}>時刻を指定</option>
+      </select>
+      {isTime && (
+        <input
+          type="time"
+          disabled={disabled}
+          value={value === TIME_PENDING ? '' : value}
+          onChange={e => onChange(e.target.value || TIME_PENDING)}
+          className="rounded border border-red-300 bg-red-50 px-1 py-0.5 text-xs"
+        />
+      )}
+    </span>
   );
 }

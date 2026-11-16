@@ -30,15 +30,17 @@ export interface TruckTimeResult {
   finishTime: Date | null;
   /** 定時（deliveryEndTime）を過ぎているか */
   overDeadline: boolean;
-  /** 到着希望時刻（時間指定）に間に合わない停車地のID */
+  /** 時間指定・時間帯（目安）に間に合わない停車地のID */
   arrivalConflictStopIds: string[];
+  /** このトラックに（割当済み＋仮の振り分けで）積む停車地 */
+  stops: PoolStopInput[];
 }
 
 export interface TimeOverflowResult {
   /** 1台でも定時を過ぎていればtrue */
   overCapacityTime: boolean;
   truckResults: TruckTimeResult[];
-  /** 全トラック分の、時間指定に間に合わない停車地のID（時間指定が重なってトラックが足りない場合など） */
+  /** 全トラック分の、時間指定・時間帯に間に合わない停車地のID（時間指定が重なってトラックが足りない場合など） */
   arrivalConflictStopIds: string[];
 }
 
@@ -54,6 +56,8 @@ interface FinishSimulation {
   finishTime: Date;
   hasArrivalConflict: boolean;
   arrivalConflictStopIds: string[];
+  /** 停車地ごとの到着予定時刻 */
+  estimatedTimes: Map<string, Date>;
 }
 
 // 停車地の並びを到着希望時刻込みで（1日分まとめて1回だけ）組み直したうえで、その並び順のまま
@@ -87,6 +91,7 @@ function simulateFinish(
   const ordered = orderWithTimeBudget(tripStartPos, tripStartTime, stops, lunchBreak, travel);
 
   const arrivalConflictStopIds: string[] = [];
+  const estimatedTimes = new Map<string, Date>();
   let tripVolume = 0;
   let batch: PoolStopInput[] = [];
   let finishTime = tripStartTime;
@@ -97,6 +102,7 @@ function simulateFinish(
     // 2便目以降は本社から出る
     tripStartPos = depot;
     arrivalConflictStopIds.push(...timed.filter(s => s.timeConflict).map(s => s.id));
+    for (const s of timed) estimatedTimes.set(s.id, s.estimatedTime);
     const last = timed[timed.length - 1];
     finishTime = estimateReturnToDepotTime(depot, last, last.estimatedTime, lunchBreak, stopDurationMinutes, travel);
     batch = [];
@@ -117,7 +123,117 @@ function simulateFinish(
   }
   closeTrip();
 
-  return { finishTime, hasArrivalConflict: arrivalConflictStopIds.length > 0, arrivalConflictStopIds };
+  return { finishTime, hasArrivalConflict: arrivalConflictStopIds.length > 0, arrivalConflictStopIds, estimatedTimes };
+}
+
+// checkTimeOverflow・evaluateInsertionで共通の、1台分のシミュレーション
+function truckSimulator(
+  loadUtilizationPercent: number,
+  reloadDurationMinutes: number,
+  lunchBreak: LunchBreak | undefined,
+  stopDurationMinutes: number,
+  depot: Coord,
+  travel: TravelModel
+) {
+  // stopsは割当済み（assignedStops）の後ろに未割当分を足したもの。未割当分が含まれていれば、
+  // 出発済みのトラックは本社へ戻って積み込んでから配る
+  return (t: TruckDayInput, stops: PoolStopInput[]) =>
+    simulateFinish(
+      t.departureTime,
+      stops,
+      lunchBreak,
+      stopDurationMinutes,
+      depot,
+      t.capacityM3 == null ? null : t.capacityM3 * (loadUtilizationPercent / 100),
+      reloadDurationMinutes,
+      travel,
+      t.startPos ?? depot,
+      !!t.reloadBeforePool && stops.length > t.assignedStops.length
+    );
+}
+
+export type InsertionFailure = 'size' | 'arrival' | 'breaks-others' | 'deadline';
+
+export interface InsertionResult {
+  /** どれかのトラックに、誰の時間の条件も崩さず・定時までに積めるか */
+  ok: boolean;
+  /** 積めるトラックのうち最も早く終わるもの（okのとき） */
+  truckId: string | null;
+  /** そのトラックの本社帰着予定（okのとき） */
+  finishTime: Date | null;
+  /** 足す配送先の到着予定（okのとき）。okでなければ、全トラックの中で最も早い到着予定 */
+  candidateArrival: Date | null;
+  /** 積めない理由（okでないとき）。最も惜しいトラックの理由 */
+  failure: InsertionFailure | null;
+  /** failureが'breaks-others'のとき、条件から外れてしまう先に受けた配送先のID */
+  brokenStopIds: string[];
+  /** failureが'deadline'のとき、そのトラックの本社帰着予定 */
+  failureFinishTime: Date | null;
+}
+
+// 荷物受付の「空いている日時」の判定（2026-11-16導入）。checkTimeOverflowで仮に振り分けた今の状態
+// （baseline）に、新しい配送先を1件だけ足せるかをトラックごとに試す。全体を振り分け直すより大幅に
+// 軽いので、日付×時間帯の表をまとめて計算できる。先に受けた配送先を優先する（2026-11-16決定）ため、
+// 足したことで、今は間に合っている配送先の時間指定・時間帯が崩れるトラックには積まない
+export function evaluateInsertion(
+  trucks: TruckDayInput[],
+  baseline: TimeOverflowResult,
+  candidate: PoolStopInput,
+  deliveryEndTime: Date,
+  loadUtilizationPercent: number,
+  reloadDurationMinutes: number,
+  lunchBreak?: LunchBreak,
+  stopDurationMinutes: number = STOP_DURATION_MINUTES,
+  depot: Coord = TOCHIGI_DEPOT,
+  travel: TravelModel = DEFAULT_TRAVEL_MODEL
+): InsertionResult {
+  const simulateTruck = truckSimulator(loadUtilizationPercent, reloadDurationMinutes, lunchBreak, stopDurationMinutes, depot, travel);
+  const baseByTruck = new Map(baseline.truckResults.map(r => [r.truckId, r]));
+
+  type Attempt = { truckId: string; failures: InsertionFailure[]; finish: Date; arrival: Date | null; broken: string[] };
+  const attempts: Attempt[] = [];
+  let sizeOnly = true;
+  for (const t of trucks) {
+    if (t.bed && !stopFitsBed(candidate, t.bed)) continue;
+    sizeOnly = false;
+    const base = baseByTruck.get(t.truckId);
+    const baseStops = base?.stops ?? t.assignedStops;
+    const baseConflicts = new Set(base?.arrivalConflictStopIds ?? []);
+    const sim = simulateTruck(t, [...baseStops, candidate]);
+    const failures: InsertionFailure[] = [];
+    if (sim.arrivalConflictStopIds.includes(candidate.id)) failures.push('arrival');
+    const broken = sim.arrivalConflictStopIds.filter(id => id !== candidate.id && !baseConflicts.has(id));
+    if (broken.length > 0) failures.push('breaks-others');
+    if (sim.finishTime.getTime() > deliveryEndTime.getTime()) failures.push('deadline');
+    attempts.push({ truckId: t.truckId, failures, finish: sim.finishTime, arrival: sim.estimatedTimes.get(candidate.id) ?? null, broken });
+  }
+
+  const empty = { brokenStopIds: [], failureFinishTime: null };
+  if (sizeOnly) return { ok: false, truckId: null, finishTime: null, candidateArrival: null, failure: 'size', ...empty };
+
+  const oks = attempts.filter(a => a.failures.length === 0);
+  if (oks.length > 0) {
+    const best = oks.reduce((a, b) => (b.finish.getTime() < a.finish.getTime() ? b : a));
+    return { ok: true, truckId: best.truckId, finishTime: best.finish, candidateArrival: best.arrival, failure: null, ...empty };
+  }
+
+  // 最も惜しいトラック（理由が少ない、同じなら早く終わる）の理由を返す。理由が複数あれば、
+  // 自分が着けない＞他を崩す＞定時を過ぎる、の順に伝える
+  const closest = attempts.reduce((a, b) =>
+    b.failures.length < a.failures.length || (b.failures.length === a.failures.length && b.finish.getTime() < a.finish.getTime()) ? b : a
+  );
+  const order: InsertionFailure[] = ['arrival', 'breaks-others', 'deadline'];
+  const failure = order.find(f => closest.failures.includes(f))!;
+  const arrivals = attempts.map(a => a.arrival).filter((d): d is Date => d != null);
+  return {
+    ok: false,
+    truckId: null,
+    finishTime: null,
+    candidateArrival: arrivals.length > 0 ? new Date(Math.min(...arrivals.map(d => d.getTime()))) : null,
+    failure,
+    brokenStopIds: failure === 'breaks-others' ? closest.broken : [],
+    failureFinishTime: failure === 'deadline' ? closest.finish : null,
+  };
 }
 
 export function checkTimeOverflow(
@@ -144,26 +260,8 @@ export function checkTimeOverflow(
   // ため、容積による候補フィルタは行わない。容積の影響は、simulateFinish内でリロード回数が
   // 増える＝所要時間が延びるという形でfinishTimeに反映され、それが「最も早く終わるトラック」の
   // 選定に自然と織り込まれる
-  const effectiveCapacity = new Map<string, number | null>(
-    trucks.map(t => [t.truckId, t.capacityM3 == null ? null : t.capacityM3 * (loadUtilizationPercent / 100)])
-  );
   const stopsByTruck = new Map<string, PoolStopInput[]>(trucks.map(t => [t.truckId, [...t.assignedStops]]));
-
-  // stopsは割当済み（assignedStops）の後ろに未割当分を足したもの。未割当分が含まれていれば、
-  // 出発済みのトラックは本社へ戻って積み込んでから配る
-  const simulateTruck = (t: TruckDayInput, stops: PoolStopInput[]) =>
-    simulateFinish(
-      t.departureTime,
-      stops,
-      lunchBreak,
-      stopDurationMinutes,
-      depot,
-      effectiveCapacity.get(t.truckId) ?? null,
-      reloadDurationMinutes,
-      travel,
-      t.startPos ?? depot,
-      !!t.reloadBeforePool && stops.length > t.assignedStops.length
-    );
+  const simulateTruck = truckSimulator(loadUtilizationPercent, reloadDurationMinutes, lunchBreak, stopDurationMinutes, depot, travel);
 
   const sortedStops = [...poolStops].sort((a, b) => stopVolume(b) - stopVolume(a));
 
@@ -191,7 +289,7 @@ export function checkTimeOverflow(
   const truckResults: TruckTimeResult[] = trucks.map(t => {
     const allStops = stopsByTruck.get(t.truckId)!;
     if (allStops.length === 0) {
-      return { truckId: t.truckId, finishTime: null, overDeadline: false, arrivalConflictStopIds: [] };
+      return { truckId: t.truckId, finishTime: null, overDeadline: false, arrivalConflictStopIds: [], stops: [] };
     }
     const sim = simulateTruck(t, allStops);
     return {
@@ -199,6 +297,7 @@ export function checkTimeOverflow(
       finishTime: sim.finishTime,
       overDeadline: sim.finishTime.getTime() > deliveryEndTime.getTime(),
       arrivalConflictStopIds: sim.arrivalConflictStopIds,
+      stops: allStops,
     };
   });
 

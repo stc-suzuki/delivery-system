@@ -5,6 +5,7 @@ import { checkCapacityOverflow } from '@/lib/loadCapacity';
 import { computeDayTimeOverflow, DayRouteInput } from '@/lib/dayTimeOverflow';
 import { PoolStopInput } from '@/lib/loadAssignment';
 import { fetchCurrentPositions } from '@/lib/currentPosition';
+import { stopArrivalConstraint, arrivalConflictEntry } from '@/lib/timeBands';
 
 // 引数を取らないGETは、本番の組み立て（next build）時に結果が固定されてしまうため、毎回DBから取得させる
 export const dynamic = 'force-dynamic';
@@ -107,7 +108,7 @@ export async function GET() {
           name: s.location.name,
           lat: s.location.lat,
           lng: s.location.lng,
-          arrivalTime: s.requestedArrivalTime ? s.requestedArrivalTime.toISOString() : null,
+          ...stopArrivalConstraint(s),
           packages: s.packages,
         };
         if (!poolStopsByDate.has(key)) poolStopsByDate.set(key, []);
@@ -120,7 +121,7 @@ export async function GET() {
             name: s.location.name,
             lat: s.location.lat,
             lng: s.location.lng,
-            arrivalTime: s.requestedArrivalTime ? s.requestedArrivalTime.toISOString() : null,
+            ...stopArrivalConstraint(s),
             packages: s.packages,
           });
         }
@@ -160,9 +161,8 @@ export async function GET() {
       // 時間指定に間に合わない見込みの配送先（/api/poolのtimeOverflow.arrivalConflictsと同じ）
       const arrivalConflicts = timeResult.arrivalConflictStopIds.flatMap(id => {
         const s = stopById.get(id);
-        return s?.requestedArrivalTime
-          ? [{ locationName: s.location.name, requestedArrivalTime: s.requestedArrivalTime.toISOString() }]
-          : [];
+        const entry = s ? arrivalConflictEntry(s) : null;
+        return entry ? [{ locationName: entry.locationName, requestedArrivalTime: entry.requestedArrivalTime, windowLabel: entry.windowLabel }] : [];
       });
 
       return {

@@ -11,6 +11,7 @@ import {
   ROUTE_OPERATION_STATUS_STYLES,
 } from '@/lib/routeOperationStatus';
 import { tripsWithStops } from '@/lib/tripPlanning';
+import { windowLabel } from '@/lib/timeBands';
 
 type Stop = {
   id: string;
@@ -18,6 +19,9 @@ type Stop = {
   status: StopStatus;
   scheduledTime: string | null;
   requestedArrivalTime: string | null;
+  // 到着の時間帯（目安）。時間指定とはどちらか一方
+  requestedWindowStart: string | null;
+  requestedWindowEnd: string | null;
   isTimeFixed: boolean;
   note: string | null;
   statusSetByDispatcher: boolean;
@@ -404,11 +408,18 @@ export default function DriverRoutePage() {
                   </span>
                 </p>
               ) : (
-                stop.scheduledTime && (
-                  <p className="mt-0.5">
-                    <span className="inline-flex items-center gap-1 rounded bg-gray-100 px-1.5 py-0.5 text-xs text-gray-500">
-                      {format(new Date(stop.scheduledTime), 'HH:mm')} 頃（目安）
-                    </span>
+                (stop.scheduledTime || (stop.requestedWindowStart && stop.requestedWindowEnd)) && (
+                  <p className="mt-0.5 flex flex-wrap gap-1">
+                    {stop.requestedWindowStart && stop.requestedWindowEnd && (
+                      <span className="inline-flex items-center gap-1 rounded bg-green-50 px-1.5 py-0.5 text-xs font-semibold text-green-700">
+                        {windowLabel(stop.requestedWindowStart, stop.requestedWindowEnd)} 時間帯（目安）
+                      </span>
+                    )}
+                    {stop.scheduledTime && (
+                      <span className="inline-flex items-center gap-1 rounded bg-gray-100 px-1.5 py-0.5 text-xs text-gray-500">
+                        {format(new Date(stop.scheduledTime), 'HH:mm')} 頃（目安）
+                      </span>
+                    )}
                   </p>
                 )
               )}

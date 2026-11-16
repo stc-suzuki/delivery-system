@@ -4,6 +4,7 @@ import { effectiveCapacityM3, truckBed } from '@/lib/loadCapacity';
 import { assignStopsToTrucks, AssignTruckInput, PoolStopInput } from '@/lib/loadAssignment';
 import { travelModelFromSettings } from '@/lib/routeOptimizer';
 import { resolveDeparture } from '@/lib/routeReorder';
+import { stopArrivalConstraint } from '@/lib/timeBands';
 
 // 手順③：自動割当（FFD）はあくまで参考データ。何も永続化しない。
 // [id]で指定したルートと同日でまだ稼働していない全ルート（PENDING）、
@@ -74,7 +75,7 @@ export async function GET(
       packages: s.packages,
       lat: s.location.lat,
       lng: s.location.lng,
-      arrivalTime: s.requestedArrivalTime ? s.requestedArrivalTime.toISOString() : null,
+      ...stopArrivalConstraint(s),
     }));
 
     const result = assignStopsToTrucks(
