@@ -21,9 +21,15 @@ type Cell = {
 };
 type Day = { date: string; stopCount: number; truckCount: number; cells: Cell[] };
 type SortMode = 'recent' | 'name' | 'created';
-type Mode = 'band' | 'time';
+// 到着の指定の選び方。none＝指定なし（最初はこれ。なるべく指定なしで受けたい、2026-11-17ユーザー指定）、
+// band＝時間帯（目安）で選ぶ、time＝時刻を指定する
+type Mode = 'none' | 'band' | 'time';
+const MODE_LABELS: Record<Mode, string> = { none: '指定なし', band: '時間帯で選ぶ', time: '時刻を指定する' };
 
 const WEEKDAYS = ['日', '月', '火', '水', '木', '金', '土'];
+// 選び済みの見せ方（①の配送先名・②の商品と数量）。一覧の選択行（bg-blue-100）と同じ薄い青
+const SELECTED_CHIP = 'rounded-md border border-blue-300 bg-blue-100 px-2.5 py-0.5 text-sm font-bold text-blue-900';
+const SELECTED_FIELD = 'border-blue-300 bg-blue-100 font-bold text-blue-900';
 const SORT_STORAGE_KEY = 'pool-new-order-sort';
 const COLUMN_LABELS: Record<string, string> = {
   NONE: '指定なし',
@@ -73,7 +79,9 @@ export default function NewOrderPanel({ onRegistered }: { onRegistered?: () => v
   const [sortMode, setSortMode] = useState<SortMode>('recent');
   const [location, setLocation] = useState<Location | null>(null);
   const [rows, setRows] = useState<PackageRow[]>([{ key: 'r0', productId: '', quantity: '1' }]);
-  const [mode, setMode] = useState<Mode>('band');
+  const [mode, setMode] = useState<Mode>('none');
+  // 指定なし・時間帯は同じ計算結果（指定なし＋3つの時間帯）を使うので、切り替えても計算し直さない
+  const apiMode: 'band' | 'time' = mode === 'time' ? 'time' : 'band';
   const [time, setTime] = useState('10:00');
   const [days, setDays] = useState<Day[] | null>(null);
   const [loadingDays, setLoadingDays] = useState(false);
@@ -81,7 +89,13 @@ export default function NewOrderPanel({ onRegistered }: { onRegistered?: () => v
   const [selected, setSelected] = useState<{ date: string; key: string } | null>(null);
   const [peek, setPeek] = useState<{ date: string; key: string } | null>(null);
   const [busy, setBusy] = useState(false);
-  const [message, setMessage] = useState<{ kind: 'ok' | 'ng'; text: string } | null>(null);
+  // 受付の結果。受け付けたときは「受け付けました」／配送先と日時・到着の指定／商品（1行ずつ）を③の下に大きめに出す
+  // （2026-11-17ユーザー指定）。受け付けられなかったときは理由の文
+  const [message, setMessage] = useState<
+    | { kind: 'ok'; locationName: string; when: string; arrival: string | null; items: string[]; volume: number }
+    | { kind: 'ng'; text: string }
+    | null
+  >(null);
   const listRef = useRef<HTMLDivElement>(null);
   const [listHeight, setListHeight] = useState(480);
   const today = todayKey();
@@ -155,10 +169,10 @@ export default function NewOrderPanel({ onRegistered }: { onRegistered?: () => v
   }, [rows, productById]);
   const totalVolume = packagePayload.reduce((s, p) => s + p.width * p.depth * p.height, 0);
   const timeValid = /^([01]\d|2[0-3]):[0-5]\d$/.test(time);
-  const ready = !!location && packagePayload.length > 0 && (mode === 'band' || timeValid);
+  const ready = !!location && packagePayload.length > 0 && (mode !== 'time' || timeValid);
 
   const loadAvailability = useCallback(async () => {
-    if (!location || packagePayload.length === 0 || (mode === 'time' && !timeValid)) {
+    if (!location || packagePayload.length === 0 || (apiMode === 'time' && !timeValid)) {
       setDays(null);
       return;
     }
@@ -168,7 +182,7 @@ export default function NewOrderPanel({ onRegistered }: { onRegistered?: () => v
       const res = await fetch('/api/pool/availability', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ locationId: location.id, packages: packagePayload, mode, time: mode === 'time' ? time : undefined }),
+        body: JSON.stringify({ locationId: location.id, packages: packagePayload, mode: apiMode, time: apiMode === 'time' ? time : undefined }),
       });
       const data = await res.json();
       if (!res.ok) {
@@ -182,7 +196,7 @@ export default function NewOrderPanel({ onRegistered }: { onRegistered?: () => v
     } finally {
       setLoadingDays(false);
     }
-  }, [location, packagePayload, mode, time, timeValid]);
+  }, [location, packagePayload, apiMode, time, timeValid]);
 
   // 入力が変わったら少し待ってから計算し直す（数量や時刻を打っている途中で何度も計算しないため）
   useEffect(() => {
@@ -196,7 +210,7 @@ export default function NewOrderPanel({ onRegistered }: { onRegistered?: () => v
     setLocation(null);
     setSearch('');
     setRows([{ key: `r${Date.now()}`, productId: '', quantity: '1' }]);
-    setMode('band');
+    setMode('none');
     setSelected(null);
     setPeek(null);
     setDays(null);
@@ -235,7 +249,19 @@ export default function NewOrderPanel({ onRegistered }: { onRegistered?: () => v
         setMessage({ kind: 'ng', text: data.error ?? '受け付けられませんでした' });
         return;
       }
-      setMessage({ kind: 'ok', text: `受け付けました：${location.name}（${what}）。続けて次の受付ができます。` });
+      setMessage({
+        kind: 'ok',
+        locationName: location.name,
+        when: what,
+        arrival: data.arrival ?? null,
+        items: rows
+          .filter(r => productById.get(r.productId) && Number(r.quantity) >= 1)
+          .map(r => {
+            const p = productById.get(r.productId)!;
+            return `${p.name}（${p.width}×${p.depth}×${p.height}m） × ${r.quantity}個`;
+          }),
+        volume: totalVolume,
+      });
       reset();
       loadRecent();
       onRegistered?.();
@@ -246,7 +272,9 @@ export default function NewOrderPanel({ onRegistered }: { onRegistered?: () => v
     }
   };
 
-  const columns = mode === 'band' ? ['NONE', ...TIME_BANDS.map(b => b.key)] : ['TIME'];
+  const columns = mode === 'band' ? TIME_BANDS.map(b => b.key) : mode === 'time' ? ['TIME'] : ['NONE'];
+  // 列が1つ（指定なし・時刻指定）のときは、右に受け付けられない理由を並べる
+  const single = columns.length === 1;
 
   // 画面全体をスクロールなしで収めるため、広い画面（1024px〜）では左に配送先の一覧、右に荷物・日付の表・確認を並べる。
   // 一覧は選んだ後も畳まず（選んだ行を青く表示）、右側だけで残りの入力を進める
@@ -259,11 +287,11 @@ export default function NewOrderPanel({ onRegistered }: { onRegistered?: () => v
       {/* ① 配送先 */}
       <section className="flex min-h-0 flex-col rounded-lg border border-panel-line bg-white p-3">
         <h2 className="mb-2 flex items-center gap-2 text-sm font-semibold text-heading">
-          <StepNo n={1} />配送先
+          <StepNo n={1} done={!!location} />配送先
           {location && (
-            <span className="ml-1 flex min-w-0 items-center gap-1 text-sm font-normal text-gray-800">
-              <Check className="h-4 w-4 shrink-0 text-green-600" />
-              <span className="truncate font-semibold">{location.name}</span>
+            // 選んだ配送先は一覧の選択行と同じ薄い青の札で出す（②の選んだ商品と同じ見せ方。2026-11-17ユーザー選択の案2）
+            <span className="ml-1 flex min-w-0 items-center">
+              <span className={`truncate ${SELECTED_CHIP}`}>{location.name}</span>
             </span>
           )}
         </h2>
@@ -301,7 +329,11 @@ export default function NewOrderPanel({ onRegistered }: { onRegistered?: () => v
                 <button
                   key={l.id}
                   type="button"
-                  onClick={() => setLocation(l)}
+                  onClick={() => {
+                    setLocation(l);
+                    // 次の受付を始めたら、前の受付の結果は消す（③の表を出す場所を空ける）
+                    setMessage(null);
+                  }}
                   className={`grid w-full grid-cols-[minmax(0,1.2fr)_minmax(0,1.5fr)_7rem_3.5rem] gap-2 border-b border-gray-100 px-2 py-1 text-left text-xs ${
                     location?.id === l.id ? 'bg-blue-100 font-semibold' : 'hover:bg-blue-50'
                   }`}
@@ -317,21 +349,11 @@ export default function NewOrderPanel({ onRegistered }: { onRegistered?: () => v
       </section>
 
       <div className="flex min-h-0 flex-col gap-2 overflow-y-auto">
-      {message && (
-        <div
-          className={`flex items-start gap-2 rounded-lg px-3 py-1.5 text-xs ${
-            message.kind === 'ok' ? 'bg-green-50 text-green-800' : 'bg-red-50 text-red-700'
-          }`}
-        >
-          {message.kind === 'ok' ? <Check className="mt-0.5 h-4 w-4 shrink-0" /> : <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />}
-          <span>{message.text}</span>
-        </div>
-      )}
 
       {/* ② 荷物 */}
       <section className={`rounded-lg border border-panel-line bg-white px-3 py-2 ${location ? '' : 'pointer-events-none opacity-50'}`}>
         <h2 className="mb-1 flex items-center gap-2 text-sm font-semibold text-heading">
-          <StepNo n={2} />荷物
+          <StepNo n={2} done={packagePayload.length > 0} />荷物
           <span className="ml-auto flex items-center gap-3 text-xs font-normal">
             <button
               type="button"
@@ -349,7 +371,7 @@ export default function NewOrderPanel({ onRegistered }: { onRegistered?: () => v
               <select
                 value={r.productId}
                 onChange={e => setRows(rs => rs.map(x => (x.key === r.key ? { ...x, productId: e.target.value } : x)))}
-                className="min-w-0 flex-1 rounded border border-gray-300 px-2 py-1 text-sm"
+                className={`min-w-0 flex-1 rounded border px-2 py-1 text-sm ${r.productId ? SELECTED_FIELD : 'border-gray-300'}`}
               >
                 <option value="">商品を選択</option>
                 {products.map(p => (
@@ -364,7 +386,7 @@ export default function NewOrderPanel({ onRegistered }: { onRegistered?: () => v
                 step={1}
                 value={r.quantity}
                 onChange={e => setRows(rs => rs.map(x => (x.key === r.key ? { ...x, quantity: e.target.value } : x)))}
-                className="w-16 rounded border border-gray-300 px-2 py-1 text-sm"
+                className={`w-16 rounded border px-2 py-1 text-sm ${r.productId ? SELECTED_FIELD : 'border-gray-300'}`}
                 aria-label="数量"
               />
               <span className="text-sm text-gray-600">個</span>
@@ -384,16 +406,20 @@ export default function NewOrderPanel({ onRegistered }: { onRegistered?: () => v
       {/* ③ 配送日と到着の指定 */}
       <section className={`rounded-lg border border-panel-line bg-white px-3 py-2 ${location && packagePayload.length > 0 ? '' : 'pointer-events-none opacity-50'}`}>
         <h2 className="mb-1 flex flex-wrap items-center gap-2 text-sm font-semibold text-heading">
-          <StepNo n={3} />配送日と到着の指定
+          <StepNo n={3} done={!!selectedCell} />配送日と到着の指定
           <span className="ml-auto inline-flex overflow-hidden rounded border border-gray-300 text-xs font-normal">
-            {(['band', 'time'] as Mode[]).map(m => (
+            {(['none', 'band', 'time'] as Mode[]).map(m => (
               <button
                 key={m}
                 type="button"
-                onClick={() => setMode(m)}
-                className={`px-2 py-0.5 ${mode === m ? 'bg-blue-50 font-semibold text-blue-700' : 'bg-white text-gray-600'}`}
+                onClick={() => {
+                  setMode(m);
+                  setSelected(null);
+                  setPeek(null);
+                }}
+                className={`border-l border-gray-300 px-2 py-0.5 first:border-l-0 ${mode === m ? 'bg-blue-100 font-bold text-blue-900' : 'bg-white text-gray-600'}`}
               >
-                {m === 'band' ? '指定なし・時間帯で選ぶ' : '時刻を指定する'}
+                {MODE_LABELS[m]}
               </button>
             ))}
           </span>
@@ -413,7 +439,7 @@ export default function NewOrderPanel({ onRegistered }: { onRegistered?: () => v
           <div className={loadingDays ? 'opacity-60' : ''}>
             <div
               className="grid items-center gap-x-1 gap-y-0.5 text-xs"
-              style={{ gridTemplateColumns: mode === 'band' ? '7.5rem repeat(4, minmax(0, 1fr))' : '7.5rem 4rem minmax(0, 1fr)' }}
+              style={{ gridTemplateColumns: single ? '7.5rem 4rem minmax(0, 1fr)' : `7.5rem repeat(${columns.length}, minmax(0, 1fr))` }}
             >
               <span />
               {columns.map(k => (
@@ -421,13 +447,13 @@ export default function NewOrderPanel({ onRegistered }: { onRegistered?: () => v
                   {k === 'TIME' ? time : COLUMN_LABELS[k]}
                 </span>
               ))}
-              {mode === 'time' && <span className="text-gray-500">受け付けられない理由</span>}
+              {single && <span className="text-gray-500">受け付けられない理由</span>}
               {days.map(day => (
                 <DayRow
                   key={day.date}
                   day={day}
                   label={dayLabel(day.date, today)}
-                  mode={mode}
+                  columns={columns}
                   selected={selected}
                   peek={peek}
                   onPick={(key, cell) => {
@@ -448,7 +474,9 @@ export default function NewOrderPanel({ onRegistered }: { onRegistered?: () => v
             >
               {mode === 'band'
                 ? '○余裕あり　△余裕少　×不可（押すと理由）　—トラック未登録など'
-                : '○その時刻に着ける　△余裕少　×不可　—トラック未登録など'}
+                : mode === 'time'
+                  ? '○その時刻に着ける　△余裕少　×不可　—トラック未登録など'
+                  : '○余裕あり　△余裕少　×不可　—トラック未登録など'}
             </p>
             {peekCell && peek && (
               <div className="mt-1 rounded bg-red-50 px-2 py-1 text-xs text-red-700">
@@ -468,10 +496,39 @@ export default function NewOrderPanel({ onRegistered }: { onRegistered?: () => v
         )}
       </section>
 
+      {/* 受付の結果（③の下） */}
+      {message?.kind === 'ok' && (
+        // 配色は「保存しました」と同じ控えめな緑（2026-11-17ユーザーが5案からB案を選択）。中身は通常の濃い文字で読みやすく
+        <div className="rounded-lg border border-green-200 bg-green-50 px-4 py-3">
+          <p className="flex items-center gap-1.5 text-sm font-bold text-green-800">
+            <Check className="h-4 w-4 shrink-0 text-green-600" />
+            受け付けました
+          </p>
+          <p className="mt-1 text-base font-semibold text-heading">{message.locationName}</p>
+          <p className="text-sm text-gray-700">
+            {message.when}
+            {message.arrival && `　到着予定 ${hhmm(message.arrival)}頃`}
+          </p>
+          <ul className="mt-1 space-y-0.5 text-xs text-gray-600">
+            {message.items.map((item, i) => (
+              <li key={i}>・{item}</li>
+            ))}
+          </ul>
+          <p className="mt-1 text-xs text-gray-500">合計 {message.volume.toFixed(2)}m3　続けて次の受付ができます</p>
+        </div>
+      )}
+      {message?.kind === 'ng' && (
+        <div className="flex items-start gap-2 rounded-lg border-2 border-red-400 bg-red-50 px-4 py-3 text-sm text-red-700">
+          <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0" />
+          <span>{message.text}</span>
+        </div>
+      )}
+
       {/* 確認と受付 */}
       <div className="mt-auto flex items-center gap-3">
         {ready && selected && selectedCell ? (
-          <div className="min-w-0 flex-1 rounded-lg border border-blue-300 bg-blue-50 px-3 py-1.5 text-xs text-blue-900">
+          // 確認の枠は落ち着いた灰色にし、青は「選んだもの」と受け付けるボタンだけにする（2026-11-17案B）
+          <div className="min-w-0 flex-1 rounded-lg border border-slate-300 bg-panel-line px-3 py-1.5 text-xs text-heading">
             <p className="truncate">
               <span className="font-semibold">この内容で受け付けます：{location!.name}</span>
               {rows
@@ -482,7 +539,7 @@ export default function NewOrderPanel({ onRegistered }: { onRegistered?: () => v
             </p>
             <p className="font-semibold">
               {dayLabel(selected.date, today)}　{arrivalText(selected.key, time)}
-              {selectedCell.arrival && <span className="text-blue-700">　到着予定 {hhmm(selectedCell.arrival)}頃</span>}
+              {selectedCell.arrival && <span className="font-normal text-gray-600">　到着予定 {hhmm(selectedCell.arrival)}頃</span>}
             </p>
           </div>
         ) : (
@@ -504,28 +561,35 @@ export default function NewOrderPanel({ onRegistered }: { onRegistered?: () => v
   );
 }
 
-function StepNo({ n }: { n: number }) {
-  return (
-    <span className="inline-flex h-5 w-5 items-center justify-center rounded-full bg-blue-100 text-xs font-semibold text-blue-700">{n}</span>
+// ステップの番号。まだのステップは灰色の番号、選び終えたステップは青い丸に✓（進み具合の印。2026-11-17ユーザー選択の案B）
+function StepNo({ n, done }: { n: number; done: boolean }) {
+  return done ? (
+    <span className="inline-flex h-5 w-5 items-center justify-center rounded-full bg-blue-600 text-white">
+      <Check className="h-3.5 w-3.5" strokeWidth={3} />
+    </span>
+  ) : (
+    <span className="inline-flex h-5 w-5 items-center justify-center rounded-full bg-gray-200 text-xs font-semibold text-gray-500">{n}</span>
   );
 }
 
 function DayRow({
   day,
   label,
-  mode,
+  columns,
   selected,
   peek,
   onPick,
 }: {
   day: Day;
   label: string;
-  mode: Mode;
+  columns: string[];
   selected: { date: string; key: string } | null;
   peek: { date: string; key: string } | null;
   onPick: (key: string, cell: Cell) => void;
 }) {
   const registered = day.cells.every(c => c.status === 'registered');
+  const single = columns.length === 1;
+  const cells = columns.map(k => day.cells.find(c => c.key === k)).filter((c): c is Cell => !!c);
   return (
     <>
       <span className="text-gray-700">
@@ -535,13 +599,13 @@ function DayRow({
       {registered ? (
         <span
           className="rounded border border-gray-200 bg-gray-50 py-0 text-center leading-[18px] text-gray-400"
-          style={{ gridColumn: mode === 'band' ? 'span 4' : 'span 2' }}
+          style={{ gridColumn: `span ${single ? 2 : columns.length}` }}
         >
           この配送先はこの日に登録済み
         </span>
       ) : (
         <>
-          {day.cells.map(c => {
+          {cells.map(c => {
             const isSel = selected?.date === day.date && selected.key === c.key;
             const isPeek = peek?.date === day.date && peek.key === c.key;
             return (
@@ -550,17 +614,18 @@ function DayRow({
                 type="button"
                 onClick={() => onPick(c.key, c)}
                 title={c.reason ?? undefined}
-                className={`rounded border py-0 text-center text-sm leading-[18px] ${STATUS_CLASS[c.status]} ${
-                  isSel ? 'ring-2 ring-blue-500' : isPeek ? 'ring-2 ring-red-300' : ''
+                className={`rounded border py-0 text-center text-sm leading-[18px] ${
+                  // 選んだ枠は①②と同じ薄い青（2026-11-17ユーザー指定）
+                  isSel ? SELECTED_FIELD : `${STATUS_CLASS[c.status]} ${isPeek ? 'ring-2 ring-red-300' : ''}`
                 }`}
               >
                 {STATUS_MARK[c.status]}
               </button>
             );
           })}
-          {mode === 'time' && (
-            <span className="truncate text-red-600" title={day.cells[0]?.status === 'ng' ? day.cells[0].reason ?? '' : ''}>
-              {day.cells[0]?.status === 'ng' ? day.cells[0].reason : day.cells[0]?.status === 'no-truck' ? <span className="text-gray-400">トラック未登録</span> : ''}
+          {single && (
+            <span className="truncate text-red-600" title={cells[0]?.status === 'ng' ? cells[0].reason ?? '' : ''}>
+              {cells[0]?.status === 'ng' ? cells[0].reason : cells[0]?.status === 'no-truck' ? <span className="text-gray-400">トラック未登録</span> : ''}
             </span>
           )}
         </>
