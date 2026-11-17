@@ -5,7 +5,7 @@
 // ○△×から枠を選ぶ → 受け付ける。対象日を先に選ぶ今までの入力（登録内容の確認・修正）とは別のタブ。
 // ×は選べない（2026-11-16決定）。保存の直前にサーバーがもう一度判定し、×になっていれば保存しない
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
-import { Check, Plus, Trash2, AlertTriangle, Info } from 'lucide-react';
+import { Check, Plus, Trash2, AlertTriangle, Info, X } from 'lucide-react';
 import { TIME_BANDS } from '@/lib/timeBands';
 
 type Location = { id: string; name: string; address: string; phone: string | null; createdAt: string };
@@ -297,13 +297,27 @@ export default function NewOrderPanel({ onRegistered }: { onRegistered?: () => v
         </h2>
         <>
             <div className="mb-1 flex gap-2">
-              <input
-                type="text"
-                value={search}
-                onChange={e => setSearch(e.target.value)}
-                placeholder="名前・住所・電話番号の一部"
-                className="flex-1 rounded border border-gray-300 px-2 py-1 text-sm"
-              />
+              <div className="relative flex-1">
+                <input
+                  type="text"
+                  value={search}
+                  onChange={e => setSearch(e.target.value)}
+                  placeholder="名前・住所・電話番号の一部"
+                  className="w-full rounded border border-gray-300 py-1 pl-2 pr-7 text-sm"
+                />
+                {/* 検索の文字を消す×（2026-11-17ユーザー指定） */}
+                {search && (
+                  <button
+                    type="button"
+                    onClick={() => setSearch('')}
+                    className="absolute right-1 top-1/2 -translate-y-1/2 rounded p-0.5 text-gray-400 hover:bg-gray-100 hover:text-gray-600"
+                    aria-label="検索の文字を消す"
+                    title="検索の文字を消す"
+                  >
+                    <X className="h-4 w-4" />
+                  </button>
+                )}
+              </div>
               <select
                 value={sortMode}
                 onChange={e => changeSort(e.target.value as SortMode)}
@@ -319,9 +333,8 @@ export default function NewOrderPanel({ onRegistered }: { onRegistered?: () => v
               　一覧に無い配送先は、システム管理者に登録を依頼してください
             </p>
             <div className="max-h-[60vh] min-h-0 flex-1 overflow-y-auto rounded border border-gray-300 lg:max-h-none">
-              <div className="sticky top-0 grid grid-cols-[minmax(0,1.2fr)_minmax(0,1.5fr)_7rem_3.5rem] gap-2 border-b border-gray-200 bg-gray-50 px-2 py-1 text-xs text-gray-500">
+              <div className="sticky top-0 grid grid-cols-[minmax(0,1fr)_7.5rem_3.5rem] gap-2 border-b border-gray-200 bg-gray-50 px-2 py-1 text-xs text-gray-500">
                 <span>配送先</span>
-                <span>住所</span>
                 <span>電話番号</span>
                 <span>最後の配送</span>
               </div>
@@ -334,12 +347,12 @@ export default function NewOrderPanel({ onRegistered }: { onRegistered?: () => v
                     // 次の受付を始めたら、前の受付の結果は消す（③の表を出す場所を空ける）
                     setMessage(null);
                   }}
-                  className={`grid w-full grid-cols-[minmax(0,1.2fr)_minmax(0,1.5fr)_7rem_3.5rem] gap-2 border-b border-gray-100 px-2 py-1 text-left text-xs ${
+                  className={`grid w-full grid-cols-[minmax(0,1fr)_7.5rem_3.5rem] gap-2 border-b border-gray-100 px-2 py-1 text-left text-xs ${
                     location?.id === l.id ? 'bg-blue-100 font-semibold' : 'hover:bg-blue-50'
                   }`}
                 >
-                  <span className="truncate text-gray-800">{l.name}</span>
-                  <span className="truncate text-gray-600">{l.address}</span>
+                  {/* 住所は出さず、配送先名を省略せずに表示する（2026-11-17ユーザー指定。住所でも検索はできる） */}
+                  <span className="break-words text-gray-800">{l.name}</span>
                   <span className="truncate text-gray-600">{l.phone ?? ''}</span>
                   <span className="text-gray-500">{shortDate(recentByLocation.get(l.id)?.lastStopDate ?? null)}</span>
                 </button>
