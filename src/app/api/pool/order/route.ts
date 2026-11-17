@@ -3,14 +3,13 @@ import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
 import { validatePackagesInput, PackageInput } from '@/lib/planValidation';
-import { candidateDates, evaluateAvailabilityDay, AvailabilityRequest } from '@/lib/poolAvailability';
+import { candidateDates, evaluateAvailabilityDay, resolveArrivalChoice, ArrivalChoice } from '@/lib/poolAvailability';
 import { loadPoolDays } from '@/lib/poolDayData';
-import { TIME_BANDS, bandWindowOnDate } from '@/lib/timeBands';
 
 // 荷物受付「新規の受付」：1件だけ受け付けて保存する（2026-11-16導入）。
 // 画面で○△を見てから押すまでの間に他の受付が入ることがあるため、保存の直前にもう一度判定し、
 // ×になっていれば保存せず409で理由を返す。×の枠は受け付けない（2026-11-16決定）
-type Arrival = { kind: 'none' } | { kind: 'band'; band: string } | { kind: 'time'; time: string };
+type Arrival = ArrivalChoice;
 
 export async function POST(req: NextRequest) {
   try {
@@ -42,32 +41,11 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: '指定された配送先が見つかりません' }, { status: 400 });
     }
 
-    let mode: AvailabilityRequest['mode'] = 'band';
-    let time: string | undefined;
-    let columnKey = 'NONE';
-    let requestedArrivalTime: Date | null = null;
-    let windowStart: Date | null = null;
-    let windowEnd: Date | null = null;
-    if (!arrival || arrival.kind === 'none') {
-      columnKey = 'NONE';
-    } else if (arrival.kind === 'band') {
-      const band = TIME_BANDS.find(b => b.key === arrival.band);
-      if (!band) return NextResponse.json({ error: '時間帯の指定が正しくありません' }, { status: 400 });
-      columnKey = band.key;
-      const w = bandWindowOnDate(date, band);
-      windowStart = w.start;
-      windowEnd = w.end;
-    } else if (arrival.kind === 'time') {
-      if (!/^([01]\d|2[0-3]):[0-5]\d$/.test(arrival.time)) {
-        return NextResponse.json({ error: '到着時刻は HH:mm で指定してください' }, { status: 400 });
-      }
-      mode = 'time';
-      time = arrival.time;
-      columnKey = 'TIME';
-      requestedArrivalTime = new Date(`${date}T${arrival.time}:00+09:00`);
-    } else {
-      return NextResponse.json({ error: '到着の指定が正しくありません' }, { status: 400 });
+    const choice = resolveArrivalChoice(date, arrival);
+    if ('error' in choice) {
+      return NextResponse.json({ error: choice.error }, { status: 400 });
     }
+    const { mode, time, columnKey, requestedArrivalTime, windowStart, windowEnd } = choice;
 
     const now = new Date();
     const settings = await prisma.systemSetting.upsert({ where: { id: 'default' }, update: {}, create: { id: 'default' } });

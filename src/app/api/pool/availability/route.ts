@@ -7,8 +7,10 @@ import { computeAvailability, AvailabilityRequest } from '@/lib/poolAvailability
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
-    const { locationId, packages, mode, time } = body as {
+    const { locationId, packages, mode, time, excludeStopId } = body as {
       locationId?: string;
+      /** 受付の修正で、修正中の停車地自身を除いて判定する */
+      excludeStopId?: string;
       packages?: { width: number; depth: number; height: number }[];
       mode?: 'band' | 'time';
       time?: string;
@@ -40,7 +42,7 @@ export async function POST(req: NextRequest) {
       mode,
       time,
     };
-    const days = await computeAvailability(prisma, request, new Date());
+    const days = await computeAvailability(prisma, request, new Date(), typeof excludeStopId === 'string' ? excludeStopId : undefined);
     return NextResponse.json({ days });
   } catch (error) {
     console.error(error);

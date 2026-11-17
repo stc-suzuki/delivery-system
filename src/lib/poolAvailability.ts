@@ -156,14 +156,59 @@ export function evaluateAvailabilityDay(
   return { cells, results };
 }
 
-export async function computeAvailability(prisma: PrismaClient, req: AvailabilityRequest, now: Date): Promise<AvailabilityDay[]> {
+export async function computeAvailability(
+  prisma: PrismaClient,
+  req: AvailabilityRequest,
+  now: Date,
+  excludeStopId?: string
+): Promise<AvailabilityDay[]> {
   const settings = await prisma.systemSetting.upsert({ where: { id: 'default' }, update: {}, create: { id: 'default' } });
   const dates = candidateDates(now, settings.truckScheduleHorizonDays, settings.excludeWeekendsAndHolidays);
-  const days = await loadPoolDays(prisma, dates, settings);
+  const days = await loadPoolDays(prisma, dates, settings, excludeStopId);
   return days.map(day => ({
     date: day.date,
     stopCount: day.stopCount,
     truckCount: day.routes.length,
     cells: evaluateAvailabilityDay(day, settings, now, req).cells,
   }));
+}
+
+/** 受付で選ぶ到着の指定（/api/pool/order） */
+export type ArrivalChoice = { kind: 'none' } | { kind: 'band'; band: string } | { kind: 'time'; time: string };
+
+/** 到着の指定から、判定に使う列・保存する値を求める。不正ならerror */
+export function resolveArrivalChoice(
+  date: string,
+  arrival: ArrivalChoice | undefined
+):
+  | { error: string }
+  | {
+      mode: AvailabilityRequest['mode'];
+      time?: string;
+      columnKey: string;
+      requestedArrivalTime: Date | null;
+      windowStart: Date | null;
+      windowEnd: Date | null;
+    } {
+  if (!arrival || arrival.kind === 'none') {
+    return { mode: 'band', columnKey: 'NONE', requestedArrivalTime: null, windowStart: null, windowEnd: null };
+  }
+  if (arrival.kind === 'band') {
+    const band = TIME_BANDS.find(b => b.key === arrival.band);
+    if (!band) return { error: '時間帯の指定が正しくありません' };
+    const w = bandWindowOnDate(date, band);
+    return { mode: 'band', columnKey: band.key, requestedArrivalTime: null, windowStart: w.start, windowEnd: w.end };
+  }
+  if (arrival.kind === 'time') {
+    if (!/^([01]\d|2[0-3]):[0-5]\d$/.test(arrival.time)) return { error: '到着時刻は HH:mm で指定してください' };
+    return {
+      mode: 'time',
+      time: arrival.time,
+      columnKey: 'TIME',
+      requestedArrivalTime: new Date(`${date}T${arrival.time}:00+09:00`),
+      windowStart: null,
+      windowEnd: null,
+    };
+  }
+  return { error: '到着の指定が正しくありません' };
 }

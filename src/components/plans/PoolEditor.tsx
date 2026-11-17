@@ -261,7 +261,7 @@ export default function PoolEditor({
 export const TIME_PENDING = '__time__';
 
 // 到着の指定（指定なし／時間帯（目安）／時刻指定）の選択。値の形はPoolEditorのallowTimeBandsの説明を参照
-function ArrivalSelect({ value, disabled, onChange }: { value: string; disabled: boolean; onChange: (v: string) => void }) {
+export function ArrivalSelect({ value, disabled, onChange }: { value: string; disabled: boolean; onChange: (v: string) => void }) {
   const isTime = value === TIME_PENDING || /^\d{2}:\d{2}$/.test(value);
   const selectValue = isTime ? TIME_PENDING : value;
   return (

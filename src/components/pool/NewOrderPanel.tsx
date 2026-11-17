@@ -12,14 +12,14 @@ type Location = { id: string; name: string; address: string; phone: string | nul
 type Product = { id: string; name: string; width: number; depth: number; height: number };
 type Recent = { locationId: string; lastCreatedAt: string | null; lastStopDate: string | null };
 type PackageRow = { key: string; productId: string; quantity: string };
-type Cell = {
+export type Cell = {
   key: string;
   status: 'ok' | 'tight' | 'ng' | 'no-truck' | 'registered';
   reason: string | null;
   arrival: string | null;
   finishTime: string | null;
 };
-type Day = { date: string; stopCount: number; truckCount: number; cells: Cell[] };
+export type Day = { date: string; stopCount: number; truckCount: number; cells: Cell[] };
 type SortMode = 'recent' | 'name' | 'created';
 // 到着の指定の選び方。none＝指定なし（最初はこれ。なるべく指定なしで受けたい、2026-11-17ユーザー指定）、
 // band＝時間帯（目安）で選ぶ、time＝時刻を指定する
@@ -28,25 +28,25 @@ const MODE_LABELS: Record<Mode, string> = { none: '指定なし', band: '時間�
 
 const WEEKDAYS = ['日', '月', '火', '水', '木', '金', '土'];
 // 選び済みの見せ方（①の配送先名・②の商品と数量）。一覧の選択行（bg-blue-100）と同じ薄い青
-const SELECTED_CHIP = 'rounded-md border border-blue-300 bg-blue-100 px-2.5 py-0.5 text-sm font-bold text-blue-900';
-const SELECTED_FIELD = 'border-blue-300 bg-blue-100 font-bold text-blue-900';
+export const SELECTED_CHIP = 'rounded-md border border-blue-300 bg-blue-100 px-2.5 py-0.5 text-sm font-bold text-blue-900';
+export const SELECTED_FIELD = 'border-blue-300 bg-blue-100 font-bold text-blue-900';
 const SORT_STORAGE_KEY = 'pool-new-order-sort';
-const COLUMN_LABELS: Record<string, string> = {
+export const COLUMN_LABELS: Record<string, string> = {
   NONE: '指定なし',
   ...Object.fromEntries(TIME_BANDS.map(b => [b.key, `${b.label}（目安）`])),
 };
 
-function dayLabel(date: string, today: string): string {
+export function dayLabel(date: string, today: string): string {
   const [y, m, d] = date.split('-').map(Number);
   const w = WEEKDAYS[new Date(y, m - 1, d).getDay()];
   return `${m}/${d}（${w}）${date === today ? ' 今日' : ''}`;
 }
 
-function hhmm(iso: string): string {
+export function hhmm(iso: string): string {
   return new Intl.DateTimeFormat('ja-JP', { timeZone: 'Asia/Tokyo', hour: '2-digit', minute: '2-digit', hour12: false }).format(new Date(iso));
 }
 
-function todayKey(): string {
+export function todayKey(): string {
   return new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Tokyo' }).format(new Date());
 }
 
@@ -56,14 +56,14 @@ function shortDate(date: string | null): string {
   return `${m}/${d}`;
 }
 
-function arrivalText(key: string, time: string): string {
+export function arrivalText(key: string, time: string): string {
   if (key === 'TIME') return `${time} 時間指定（ちょうど）`;
   if (key === 'NONE') return '到着の指定なし';
   return `${COLUMN_LABELS[key]}`;
 }
 
-const STATUS_MARK: Record<Cell['status'], string> = { ok: '○', tight: '△', ng: '×', 'no-truck': '—', registered: '—' };
-const STATUS_CLASS: Record<Cell['status'], string> = {
+export const STATUS_MARK: Record<Cell['status'], string> = { ok: '○', tight: '△', ng: '×', 'no-truck': '—', registered: '—' };
+export const STATUS_CLASS: Record<Cell['status'], string> = {
   ok: 'border-gray-200 bg-white text-green-700 hover:border-gray-400',
   tight: 'border-gray-200 bg-white text-amber-600 hover:border-gray-400',
   ng: 'border-dashed border-red-200 bg-gray-50 text-red-600',
@@ -71,7 +71,14 @@ const STATUS_CLASS: Record<Cell['status'], string> = {
   registered: 'border-gray-200 bg-gray-50 text-gray-400 cursor-default',
 };
 
-export default function NewOrderPanel({ onRegistered }: { onRegistered?: () => void }) {
+export default function NewOrderPanel({
+  onRegistered,
+  onShowDay,
+}: {
+  onRegistered?: () => void;
+  /** 受付完了の表示の「この日の受付を見る」から、確認・修正タブのその日へ移る */
+  onShowDay?: (date: string) => void;
+}) {
   const [locations, setLocations] = useState<Location[]>([]);
   const [products, setProducts] = useState<Product[]>([]);
   const [recentByLocation, setRecentByLocation] = useState<Map<string, Recent>>(new Map());
@@ -92,7 +99,7 @@ export default function NewOrderPanel({ onRegistered }: { onRegistered?: () => v
   // 受付の結果。受け付けたときは「受け付けました」／配送先と日時・到着の指定／商品（1行ずつ）を③の下に大きめに出す
   // （2026-11-17ユーザー指定）。受け付けられなかったときは理由の文
   const [message, setMessage] = useState<
-    | { kind: 'ok'; locationName: string; when: string; arrival: string | null; items: string[]; volume: number }
+    | { kind: 'ok'; date: string; locationName: string; when: string; arrival: string | null; items: string[]; volume: number }
     | { kind: 'ng'; text: string }
     | null
   >(null);
@@ -251,6 +258,7 @@ export default function NewOrderPanel({ onRegistered }: { onRegistered?: () => v
       }
       setMessage({
         kind: 'ok',
+        date: selected.date,
         locationName: location.name,
         when: what,
         arrival: data.arrival ?? null,
@@ -527,7 +535,14 @@ export default function NewOrderPanel({ onRegistered }: { onRegistered?: () => v
               <li key={i}>・{item}</li>
             ))}
           </ul>
-          <p className="mt-1 text-xs text-gray-500">合計 {message.volume.toFixed(2)}m3　続けて次の受付ができます</p>
+          <p className="mt-1 flex flex-wrap items-center gap-x-3 text-xs text-gray-500">
+            <span>合計 {message.volume.toFixed(2)}m3　続けて次の受付ができます</span>
+            {onShowDay && (
+              <button type="button" onClick={() => onShowDay(message.date)} className="text-blue-600 hover:underline">
+                この日の受付を見る →
+              </button>
+            )}
+          </p>
         </div>
       )}
       {message?.kind === 'ng' && (
@@ -585,7 +600,8 @@ function StepNo({ n, done }: { n: number; done: boolean }) {
   );
 }
 
-function DayRow({
+// 確認・修正タブ（RegisteredOrdersPanel）の配送日の変更でも同じ表を使う
+export function DayRow({
   day,
   label,
   columns,

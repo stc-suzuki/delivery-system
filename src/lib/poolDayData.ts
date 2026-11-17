@@ -39,11 +39,17 @@ export function daySettingsFor(date: string, s: Settings, now: Date): DaySetting
   };
 }
 
-export async function loadPoolDays(prisma: PrismaClient, dates: string[], settings: Settings): Promise<PoolDayData[]> {
+// excludeStopId：受付の修正で、修正中の停車地自身を除いて判定するため（その停車地は無いものとして読む）
+export async function loadPoolDays(
+  prisma: PrismaClient,
+  dates: string[],
+  settings: Settings,
+  excludeStopId?: string
+): Promise<PoolDayData[]> {
   const dayDates = dates.map(d => new Date(`${d}T00:00:00.000Z`));
   const [stops, routes] = await Promise.all([
     prisma.deliveryStop.findMany({
-      where: { stopDate: { in: dayDates } },
+      where: { stopDate: { in: dayDates }, ...(excludeStopId ? { id: { not: excludeStopId } } : {}) },
       include: { location: true, packages: true, route: { select: { truckId: true } } },
       orderBy: { id: 'asc' },
     }),
