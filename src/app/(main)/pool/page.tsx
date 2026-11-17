@@ -74,7 +74,8 @@ function PoolPageContent() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [calendarMonth, setCalendarMonth] = useState(() => startOfMonth(new Date(initialDate)));
-  const [monthCounts, setMonthCounts] = useState<Record<string, number>>({});
+  // 日ごとの受付件数と、未割当の受付が残っているか（配送計画の作成画面のカレンダーと同じ色分けにするため、同じAPIを使う。2026-11-17）
+  const [monthDays, setMonthDays] = useState<Record<string, { count: number; hasUnassigned: boolean }>>({});
   const [excludeWeekendsAndHolidays, setExcludeWeekendsAndHolidays] = useState(false);
   const [horizonDays, setHorizonDays] = useState(DEFAULT_HORIZON_DAYS);
   // 確認・修正タブの見方：日付で見る（カレンダーで日を選ぶ）／配送先で探す（今日以降の受付を配送先から。2026-11-17導入）
@@ -109,9 +110,9 @@ function PoolPageContent() {
     // 表示範囲全体（calendarDaysと同じ計算）を渡す
     const from = format(startOfWeek(startOfMonth(month)), 'yyyy-MM-dd');
     const to = format(endOfWeek(endOfMonth(month)), 'yyyy-MM-dd');
-    const res = await fetch(`/api/pool/calendar?from=${from}&to=${to}`);
+    const res = await fetch(`/api/plans/route-status-calendar?from=${from}&to=${to}`);
     const data = await res.json();
-    setMonthCounts(data.counts ?? {});
+    setMonthDays(data.days ?? {});
   }, []);
 
   useEffect(() => {
@@ -274,7 +275,8 @@ function PoolPageContent() {
                 const dayStr = format(day, 'yyyy-MM-dd');
                 const inCurrentMonth = isSameMonth(day, calendarMonth);
                 const inRange = dayStr >= today && dayStr <= maxDate && !(excludeWeekendsAndHolidays && isDefaultDayOff(day));
-                const locationCount = monthCounts[dayStr] ?? 0;
+                const locationCount = monthDays[dayStr]?.count ?? 0;
+                const hasUnassigned = monthDays[dayStr]?.hasUnassigned ?? false;
                 const isRegistered = locationCount > 0;
                 const isSelected = dayStr === date;
                 const isToday = dayStr === today;
@@ -289,7 +291,8 @@ function PoolPageContent() {
                       'flex h-11 flex-col items-center justify-center rounded border text-xs transition-colors',
                       !inCurrentMonth && 'opacity-40',
                       !inRange && 'cursor-not-allowed bg-gray-200 text-gray-400',
-                      inRange && isRegistered && 'border-blue-400 bg-blue-100 text-blue-900 hover:bg-blue-200',
+                      inRange && isRegistered && hasUnassigned && 'border-amber-300 bg-amber-50 text-amber-800 hover:bg-amber-100',
+                      inRange && isRegistered && !hasUnassigned && 'border-blue-400 bg-blue-100 text-blue-900 hover:bg-blue-200',
                       inRange && !isRegistered && 'border-gray-400 bg-white text-gray-800 hover:bg-gray-50',
                       isSelected && 'relative z-10 border-red-500 ring-2 ring-red-500 ring-inset',
                       isToday && !isSelected && 'border-gray-400',
@@ -299,7 +302,11 @@ function PoolPageContent() {
                   >
                     <span className={isToday ? 'font-bold' : ''}>{format(day, 'd')}</span>
                     {isRegistered ? (
-                      <span className="mt-0.5 rounded-full bg-blue-600 px-1.5 py-0.5 text-[10px] font-semibold text-white">
+                      <span
+                        className={`mt-0.5 rounded-full px-1.5 py-0.5 text-[10px] font-semibold text-white ${
+                          hasUnassigned ? 'bg-amber-500' : 'bg-blue-600'
+                        }`}
+                      >
                         {locationCount}件
                       </span>
                     ) : inRange ? (
@@ -315,7 +322,11 @@ function PoolPageContent() {
             <div className="mt-2 flex flex-col gap-1 text-xs text-gray-500">
               <span className="flex items-center gap-1.5">
                 <span className="inline-block h-3 w-3 shrink-0 rounded border border-blue-400 bg-blue-100" />
-                受付あり（数字は件数）
+                受付あり（すべてのトラックに割当済み）
+              </span>
+              <span className="flex items-center gap-1.5">
+                <span className="inline-block h-3 w-3 shrink-0 rounded border border-amber-300 bg-amber-50" />
+                受付あり（未割当あり）
               </span>
               <span className="flex items-center gap-1.5">
                 <span className="inline-block h-3 w-3 shrink-0 rounded border border-gray-400 bg-white" />
