@@ -21,6 +21,7 @@ import DispatchGanttChart, { GanttRoute, splitPlateNo } from '@/components/plans
 import RelativeDayBadge from '@/components/plans/RelativeDayBadge';
 import { RouteStatus } from '@prisma/client';
 import { computeRouteOperationStatus, RouteOperationStatus } from '@/lib/routeOperationStatus';
+import { attentionScore } from '@/lib/attentionScore';
 import { travelModelFromSettings, type TravelModel } from '@/lib/routeOptimizer';
 
 // ルート同士の見分けは行の分離・トラック番号表示で十分なため、識別色はローテーションさせず単一色に統一する
@@ -37,6 +38,9 @@ type RouteStop = {
   id: string;
   scheduledTime: string | null;
   requestedArrivalTime: string | null;
+  // 到着の時間帯（目安）。時刻指定の配送先・条件なしの配送先はnull
+  requestedWindowStart: string | null;
+  requestedWindowEnd: string | null;
   status: 'PENDING' | 'COMPLETED' | 'SKIPPED';
   isTimeFixed: boolean;
   // このルートの中でどの便（RouteTrip）の荷物か。null＝便を使わない今まで通りの単一ルート扱い
@@ -93,16 +97,21 @@ function getOperationStatus(route: GanttRoute): RouteOperationStatus {
     : 'BEFORE_START';
 }
 
+// 要注意順の点数（時刻指定の遅れ・時間帯の目安超過・出発遅れ）。ダッシュボードと同じ計算
 function getAttentionScore(route: GanttRoute, now: Date): number {
-  const departure = route.departureTime ? new Date(route.departureTime) : null;
-  let score = 0;
-  if (getOperationStatus(route) === 'BEFORE_START' && departure && departure < now) score += 2;
-  // 遅延判定はお客様に約束した到着希望時刻（requestedArrivalTime）と比較する。見込み時刻（scheduledTime）は
-  // 移動時間の都合でずれることがあり、遅延の有無を正しく表さないため使わない
-  score += route.stops.filter(
-    s => s.isTimeFixed && s.status === 'PENDING' && s.requestedArrivalTime && new Date(s.requestedArrivalTime) < now
-  ).length;
-  return score;
+  return attentionScore(
+    {
+      operationStatus: getOperationStatus(route),
+      departureTime: route.departureTime ?? null,
+      stops: route.stops.map(s => ({
+        status: s.status ?? 'PENDING',
+        isTimeFixed: !!s.isTimeFixed,
+        requestedArrivalTime: s.requestedArrivalTime ?? null,
+        requestedWindowEnd: s.requestedWindowEnd ?? null,
+      })),
+    },
+    now
+  );
 }
 
 function sortRoutes(routes: GanttRoute[], sortKey: SortKey): GanttRoute[] {
@@ -277,6 +286,8 @@ function PlansPageContent() {
       lng: s.location.lng,
       scheduledTime: s.scheduledTime,
       requestedArrivalTime: s.requestedArrivalTime,
+      requestedWindowStart: s.requestedWindowStart,
+      requestedWindowEnd: s.requestedWindowEnd,
       status: s.status,
       isTimeFixed: s.isTimeFixed,
       tripId: s.tripId,

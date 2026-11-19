@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { startOfDay, endOfDay, subDays, format } from 'date-fns';
 import { computeRouteOperationStatus } from '@/lib/routeOperationStatus';
+import { attentionScore } from '@/lib/attentionScore';
 import { estimateReturnEta } from '@/lib/returnEstimate';
 import { travelModelFromSettings } from '@/lib/routeOptimizer';
 
@@ -62,18 +63,12 @@ export async function GET(request: NextRequest) {
     const routeOperationStatus = (route: (typeof todayRoutes)[number]) =>
       computeRouteOperationStatus(route.status, route.stops.some(s => s.status === 'COMPLETED'));
 
-    const routeAttentionScore = (route: (typeof todayRoutes)[number]) => {
-      let score = 0;
-      if (routeOperationStatus(route) === 'BEFORE_START' && route.departureTime && route.departureTime < now) {
-        score += 2;
-      }
-      // 遅延判定はお客様に約束した到着希望時刻（requestedArrivalTime）と比較する。ルート再計算による
-      // 見込み時刻（scheduledTime）は移動時間の都合でずれることがあり、遅延の有無を正しく表さないため使わない
-      score += route.stops.filter(
-        s => s.isTimeFixed && s.status === 'PENDING' && s.requestedArrivalTime && s.requestedArrivalTime < now
-      ).length;
-      return score;
-    };
+    // 要注意順の点数（時刻指定の遅れ・時間帯の目安超過・出発遅れ）。配送計画一覧と同じ計算
+    const routeAttentionScore = (route: (typeof todayRoutes)[number]) =>
+      attentionScore(
+        { operationStatus: routeOperationStatus(route), departureTime: route.departureTime, stops: route.stops },
+        now
+      );
 
     const routeSummaries = todayRoutes.map(r => ({
       id: r.id,

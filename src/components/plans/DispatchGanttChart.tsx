@@ -10,6 +10,7 @@ import {
   ROUTE_OPERATION_STATUS_STYLES,
 } from '@/lib/routeOperationStatus';
 import { tripsWithStops } from '@/lib/tripPlanning';
+import { windowLabel } from '@/lib/timeBands';
 import {
   STOP_DURATION_MINUTES,
   TOCHIGI_DEPOT,
@@ -24,7 +25,13 @@ const START_HOUR = 8;
 // 下のestimateChartExtentMinutes/dynamicEndHourにより表示範囲を動的に広げる
 const END_HOUR = 20;
 
-export type GanttPackage = { id: string; name: string; width: number; depth: number; height: number };
+/** 時間帯（目安）のある配送先だけ、ツールチップに「（時間帯 12–15 目安）」を添える */
+function windowNote(stop: GanttStop): string {
+  if (stop.isTimeFixed || !stop.requestedWindowStart || !stop.requestedWindowEnd) return '';
+  return `（時間帯 ${windowLabel(stop.requestedWindowStart, stop.requestedWindowEnd)} 目安）`;
+}
+
+export type GanttPackage ={ id: string; name: string; width: number; depth: number; height: number };
 
 export type GanttStop = {
   id: string;
@@ -36,6 +43,9 @@ export type GanttStop = {
   requestedArrivalTime?: string | null;
   status?: 'PENDING' | 'COMPLETED' | 'SKIPPED';
   isTimeFixed?: boolean;
+  // 到着の時間帯（目安）。時刻指定とは別の「その中に着けばよい」幅で、ツールチップに添える
+  requestedWindowStart?: string | null;
+  requestedWindowEnd?: string | null;
   packages?: GanttPackage[];
   // このルートの中でどの便（RouteTrip）の荷物か。null/未設定＝便を使わない今まで通りの単一ルート扱い
   tripId?: string | null;
@@ -591,6 +601,7 @@ export default function DispatchGanttChart({
                           'HH:mm'
                         )}
                         {stop.isTimeFixed && '（時刻指定）'}
+                        {windowNote(stop)}
                       </div>
                     </div>
                   );
@@ -813,6 +824,7 @@ export default function DispatchGanttChart({
                                 'HH:mm'
                               )}
                               {stop.isTimeFixed && '（時刻指定）'}
+                        {windowNote(stop)}
                             </div>
                           </div>
                         );
