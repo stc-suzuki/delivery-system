@@ -1,8 +1,10 @@
 import { createServer, type IncomingMessage } from 'http';
+import { loadEnvConfig } from '@next/env';
 import next from 'next';
 import { getToken } from 'next-auth/jwt';
 import { Server } from 'socket.io';
 import { setIO } from './src/lib/socket';
+import { checkProductionConfig } from './src/lib/productionConfig';
 
 function parseCookies(header: string | undefined): Record<string, string> {
   const cookies: Record<string, string> = {};
@@ -35,6 +37,19 @@ function isSameOrigin(req: IncomingMessage): boolean {
 const dev = process.env.NODE_ENV !== 'production';
 const hostname = process.env.HOSTNAME || '0.0.0.0';
 const port = Number(process.env.PORT) || 3000;
+
+// 本番の起動手順では、ログインの暗号鍵などが本番向けになっているかを起動前に確かめる（仕様書8.6節）。
+// .env.local の読み込みは本来Nextが行うが、確認のためにここで先に読む（同じ内容を読むだけ）
+if (!dev) {
+  loadEnvConfig(process.cwd(), false);
+  const { errors, warnings } = checkProductionConfig(process.env);
+  for (const message of warnings) console.warn(`[設定の注意] ${message}`);
+  if (errors.length > 0) {
+    for (const message of errors) console.error(`[設定の誤り] ${message}`);
+    console.error('本番の起動を中止しました。仕様書8.6節を参照してください');
+    process.exit(1);
+  }
+}
 
 const app = next({ dev, hostname, port });
 const handle = app.getRequestHandler();

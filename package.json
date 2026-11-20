@@ -11,7 +11,8 @@
     "db:migrate": "prisma migrate dev",
     "db:seed": "tsx prisma/seed.ts",
     "db:studio": "prisma studio",
-    "db:init-production": "tsx scripts/init-production.ts"
+    "db:init-production": "tsx scripts/init-production.ts",
+    "secret:generate": "node scripts/generate-secret.mjs"
   },
   "prisma": {
     "seed": "tsx prisma/seed.ts"
