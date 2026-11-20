@@ -6,7 +6,8 @@
 // テスト用のトラック・ドライバー・配送先（prisma/seed.ts）は入れない。実際のデータは画面・CSVから登録する。
 //
 // 使い方（リポジトリのルートで）:
-//   DATABASE_URL="postgresql://ユーザー:パスワード@ホスト:5432/DB名" npm run db:init-production
+//   npm run db:init-production
+//   接続先は .env.local の DATABASE_URL（アプリと同じ設定ファイル）。環境変数 DATABASE_URL を指定した場合はそちらが優先
 //   任意の指定（環境変数）:
 //     INIT_ADMIN_NAME      ログインに使う名前（既定「システム管理者」）
 //     INIT_ADMIN_PASSWORD  パスワード（12文字以上。省略すると自動で作って表示する）
@@ -15,6 +16,11 @@ import { execSync } from 'node:child_process';
 import { randomInt } from 'node:crypto';
 import { PrismaClient } from '@prisma/client';
 import bcrypt from 'bcryptjs';
+import { loadEnvConfig } from '@next/env';
+
+// アプリと同じ設定ファイル（.env.local など）を読む。Prismaは .env.local を読まないため。
+// すでに環境変数で指定された値は上書きしない
+loadEnvConfig(process.cwd(), false);
 
 // 1件でもあれば止める表（業務のデータ）。テーブル名はPrismaのモデル名どおり
 const BUSINESS_TABLES = ['User', 'Driver', 'Truck', 'Location', 'Product', 'PlanRoute', 'DeliveryStop'];

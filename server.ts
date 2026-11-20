@@ -35,11 +35,10 @@ function isSameOrigin(req: IncomingMessage): boolean {
 }
 
 const dev = process.env.NODE_ENV !== 'production';
-const hostname = process.env.HOSTNAME || '0.0.0.0';
-const port = Number(process.env.PORT) || 3000;
 
-// 本番の起動手順では、ログインの暗号鍵などが本番向けになっているかを起動前に確かめる（仕様書8.6節）。
-// .env.local の読み込みは本来Nextが行うが、確認のためにここで先に読む（同じ内容を読むだけ）
+// 本番の起動手順では、設定ファイル（.env.local など）を先に読み、ログインの暗号鍵などが本番向けになっているかを
+// 起動前に確かめる（仕様書8.6節）。.env.local の読み込みは本来Nextが行うが、それでは待ち受け設定（HOSTNAME・PORT）を
+// 読む時点に間に合わないため、ここで先に読む（同じ内容を読むだけ。すでに環境変数にある値は上書きしない）
 if (!dev) {
   loadEnvConfig(process.cwd(), false);
   const { errors, warnings } = checkProductionConfig(process.env);
@@ -50,6 +49,9 @@ if (!dev) {
     process.exit(1);
   }
 }
+
+const hostname = process.env.HOSTNAME || '0.0.0.0';
+const port = Number(process.env.PORT) || 3000;
 
 const app = next({ dev, hostname, port });
 const handle = app.getRequestHandler();
@@ -88,6 +90,16 @@ app.prepare().then(() => {
   });
 
   setIO(io);
+
+  // 待ち受けに失敗した場合（ポートが使用中など）は、理由を表示して終了する
+  httpServer.on('error', (err: NodeJS.ErrnoException) => {
+    if (err.code === 'EADDRINUSE') {
+      console.error(`[起動の失敗] ポート${port}は別のプログラムが使っています。前に起動したものが動いたままでないか確かめるか、PORT を変えてください`);
+    } else {
+      console.error('[起動の失敗]', err);
+    }
+    process.exit(1);
+  });
 
   httpServer.listen(port, hostname, () => {
     console.log(`> Ready on http://${hostname}:${port}`);

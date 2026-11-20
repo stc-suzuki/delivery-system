@@ -37,3 +37,6 @@ yarn-error.log*
 *.tsbuildinfo
 next-env.d.ts
 db_backups/
+
+# 本番の起動記録（scripts/start-production.ps1）
+logs/
